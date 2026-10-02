@@ -797,11 +797,14 @@ uv project, contracts (pydantic), invariant test suite stubs, `hledger-tab --ver
 
 **M1 — Scanner to archive**
 Scanner SFTP adapter → bundle → analyse → write-once staging store → ocrmypdf
-PDF/A-2b → staging sidecar → SQLite index. Invariant tests green.
+PDF/A-2b → staging sidecar → SQLite index. Invariant tests green. The YAML
+loader rejects duplicate keys and YAML 1.1 booleans (`yes`, `on`), which
+PyYAML would otherwise accept silently.
 
 **M2 — Review TUI v0**
 Queue, page image (Sixel spike / imv fallback), generic fields, confirm (moves
-the document into its shard, first git commit), split/merge.
+the document into its shard, first git commit), split/merge. Core API with the
+read-only agent token.
 
 **M3 — Profiles**
 Types + LLM extraction with field records; validators (OCR, bankgiro, orgnr);
