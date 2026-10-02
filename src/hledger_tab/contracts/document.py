@@ -29,6 +29,7 @@ from hledger_tab.contracts.primitives import (
     TxnCode,
     UUIDv7,
 )
+from hledger_tab.core.retention import is_end_of_year, shard_for
 
 # --- Sources (§6.2, §7.1) ---------------------------------------------------
 
@@ -161,11 +162,6 @@ class Links(ContractModel):
 # --- The sidecar --------------------------------------------------------------
 
 
-def _expected_shard(expires: date | None) -> str:
-    """The shard a document with this expiry belongs to (§7.2, §12.3)."""
-    return "open" if expires is None else f"{expires.year:04d}"
-
-
 class Document(ContractModel):
     """A document sidecar (§7.3).
 
@@ -202,14 +198,13 @@ class Document(ContractModel):
 
     @model_validator(mode="after")
     def _expires_is_end_of_year(self) -> Self:
-        expires = self.expires
-        if expires is not None and not (expires.month == 12 and expires.day == 31):
+        if self.expires is not None and not is_end_of_year(self.expires):
             raise ValueError(f"expires must be a 31 December, got {self.expires}")
         return self
 
     @model_validator(mode="after")
     def _shard_matches_expires(self) -> Self:
-        expected = _expected_shard(self.expires)
+        expected = shard_for(self.expires)
         if self.shard != expected:
             raise ValueError(
                 f"shard {self.shard!r} does not match expires {self.expires}; "

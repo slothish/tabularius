@@ -19,6 +19,8 @@ from pydantic import (
 )
 from pydantic.types import UUID7
 
+from hledger_tab.core.retention import RETENTION_YEARS_PATTERN, SHARD_PATTERN
+
 
 class ContractModel(BaseModel):
     """Base class of every contract model.
@@ -67,14 +69,14 @@ type ProfileRef = Annotated[
 ]
 """A versioned reference to a type or template, e.g. ``invoice@2`` (§8.2)."""
 
-type ShardName = Annotated[str, StringConstraints(pattern=r"^(open|[1-9][0-9]{3})$")]
+type ShardName = Annotated[str, StringConstraints(pattern=SHARD_PATTERN)]
 """A shard: its expiry year as four digits, e.g. ``"2036"``, or ``"open"``
 (§7.2, §12.3)."""
 
 
 # --- Retention (§8.1, §12.3) --------------------------------------------------
 
-type RetentionYears = Annotated[str, StringConstraints(pattern=r"^P[1-9][0-9]*Y$")]
+type RetentionYears = Annotated[str, StringConstraints(pattern=RETENTION_YEARS_PATTERN)]
 """A whole-year ISO 8601 duration ``P<n>Y`` with n >= 1, e.g. ``P10Y``."""
 
 type Retention = Literal["open"] | RetentionYears
