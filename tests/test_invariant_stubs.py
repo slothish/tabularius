@@ -108,12 +108,28 @@ def _mentions_mark(node: ast.AST) -> bool:
     return "pytest.mark" in text or re.search(r"\bmark\b", text) is not None
 
 
+IMPLEMENTED_DECORATORS = frozenset(
+    {"pytest.mark.parametrize", "pytest.mark.usefixtures"}
+)
+"""Decorators an implemented invariant test may use, called and spelled out
+in full through ``pytest.mark``."""
+
+
+def _implemented_decorator(decorator: ast.expr) -> bool:
+    return (
+        isinstance(decorator, ast.Call)
+        and ast.unparse(decorator.func) in IMPLEMENTED_DECORATORS
+    )
+
+
 def marker_problems(module: ast.Module) -> list[str]:
     """Every way ``module`` attaches markers other than the allowed form.
 
-    Allowed: a test function decorated with exactly
-    ``@pytest.mark.xfail(strict=True, reason="not implemented: M<n>")`` while
-    it is a stub, and with nothing once implemented. Refused: any other
+    Allowed: a stub decorated with exactly
+    ``@pytest.mark.xfail(strict=True, reason="not implemented: M<n>")`` and
+    nothing else; an implemented test decorated only with
+    ``@pytest.mark.parametrize(...)`` and ``@pytest.mark.usefixtures(...)``.
+    Refused: any other
     decorator (including an alias such as ``xf = pytest.mark.xfail(...)``
     then ``@xf``), module-level assignments of ``pytest.mark`` anything
     (``pytestmark`` included), ``from pytest import mark``, and classes.
@@ -133,7 +149,10 @@ def marker_problems(module: ast.Module) -> list[str]:
     for function in _tests(module):
         stub = _is_stub(function)
         for decorator in function.decorator_list:
-            if not (stub and _valid_xfail(decorator)):
+            allowed = (
+                _valid_xfail(decorator) if stub else _implemented_decorator(decorator)
+            )
+            if not allowed:
                 problems.append(f"{function.name}: decorator @{ast.unparse(decorator)}")
         if stub and len(function.decorator_list) != 1:
             problems.append(
@@ -269,7 +288,22 @@ STUB = "def test_x():\n    raise NotImplementedError\n"
             "module-level pytestmark",
         ),
         ("from pytest import mark\n" + VALID + STUB, "import from pytest"),
-        ("@pytest.mark.parametrize('x', [1])\n" + VALID + STUB, "decorator"),
+        (
+            "@pytest.mark.parametrize('x', [1])\n" + VALID + STUB,
+            "decorator @pytest.mark.parametrize",
+        ),
+        (
+            "@pytest.mark.skip\ndef test_x():\n    assert True\n",
+            "decorator @pytest.mark.skip",
+        ),
+        (
+            "@pytest.mark.usefixtures\ndef test_x():\n    assert True\n",
+            "decorator @pytest.mark.usefixtures",
+        ),
+        (
+            "p = pytest.mark.parametrize('x', [1])\n@p\ndef test_x(x):\n    assert x\n",
+            "decorator @p",
+        ),
         ("@pytest.mark.skip\n" + STUB, "decorator @pytest.mark.skip"),
         (STUB, "a stub needs exactly"),
         (VALID + "def test_x():\n    assert True\n", "decorator"),
@@ -281,7 +315,10 @@ STUB = "def test_x():\n    raise NotImplementedError\n"
         "mark-alias",
         "pytestmark",
         "from-pytest-import-mark",
-        "other-decorator",
+        "parametrize-on-stub",
+        "skip-on-implemented",
+        "uncalled-usefixtures",
+        "aliased-parametrize",
         "skip-decorator",
         "stub-without-marker",
         "implemented-with-marker",
@@ -295,4 +332,18 @@ def test_marker_problems_found(source: str, problem: str) -> None:
 
 def test_marker_problems_accepts_the_allowed_forms() -> None:
     source = "import pytest\n" + VALID + STUB + "def test_y():\n    assert True\n"
+    assert marker_problems(ast.parse(source)) == []
+
+
+@pytest.mark.parametrize(
+    "decorators",
+    [
+        "@pytest.mark.parametrize('x', [1, 2])\n",
+        "@pytest.mark.usefixtures('tmp_path')\n",
+        "@pytest.mark.parametrize('x', [1])\n@pytest.mark.usefixtures('tmp_path')\n",
+    ],
+    ids=["parametrize", "usefixtures", "both"],
+)
+def test_implemented_test_may_parametrize_and_use_fixtures(decorators: str) -> None:
+    source = "import pytest\n" + decorators + "def test_x(x=1):\n    assert x\n"
     assert marker_problems(ast.parse(source)) == []
