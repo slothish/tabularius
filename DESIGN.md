@@ -316,7 +316,7 @@ classification:
   method: identifier            # identifier | classifier | llm | manual
   confidence: 1.0
 fields:                         # list of field records, see §8
-  - {key: amount_due, type: money, value: {amount: 12500.00, currency: SEK},
+  - {key: amount_due, type: money, value: {amount: "12500.00", currency: SEK},
      confidence: 0.98, source: {page: 1, bbox: [412,1180,560,1210], method: template},
      validation: {ok: true}, origin: profile, confirmed: true}
   - {key: personnummer, type: identifier, kind: personnummer,
@@ -411,6 +411,7 @@ Rules that keep personal data where the deployment expects it:
 `profiles/types/<id>.yaml`. Few, general, rarely changed.
 
 ```yaml
+schema: type/1
 id: invoice
 version: 2
 description: "Request for payment from a supplier"   # used by the LLM classifier
@@ -444,6 +445,7 @@ actions.
 `profiles/templates/<id>.yaml`. Many, specific, mostly generated.
 
 ```yaml
+schema: template/1
 id: example-invoice
 version: 3
 type: invoice@2
@@ -456,6 +458,8 @@ extract:
   due_date:   {anchor: "Förfallodag", pattern: '(\d{4}-\d{2}-\d{2})'}
   ocr:        {anchor: "OCR",         pattern: '(\d{6,25})'}
 ```
+
+Every pattern has exactly one capture group: the value.
 
 Prior art: `invoice2data` (YAML templates per issuer).
 
@@ -496,7 +500,7 @@ field names, only types.
 
 ```json
 {"key": "amount_due", "label": "Att betala", "type": "money",
- "value": {"amount": 449.00, "currency": "SEK"}, "confidence": 0.93,
+ "value": {"amount": "449.00", "currency": "SEK"}, "confidence": 0.93,
  "source": {"page": 1, "bbox": [412,1180,560,1210], "method": "regex"},
  "validation": {"ok": true}, "required": true, "origin": "profile"}
 ```
@@ -505,7 +509,7 @@ field names, only types.
 |---|---|---|
 | `text`, `longtext` | string | |
 | `number` | decimal | range |
-| `money` | {amount, currency} | currency code, sign |
+| `money` | {amount (decimal string, never a float), currency} | currency code, sign |
 | `date` | ISO date | plausibility window |
 | `enum` | string (options listed) | membership |
 | `bool` | bool | |
