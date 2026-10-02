@@ -364,6 +364,44 @@ items (payables/deadlines), review queue. Never backed up; always rebuildable.
 After any deletion the affected rows are removed and the database is `VACUUM`ed,
 so deleted text does not linger in free pages.
 
+### 7.6 Personal data
+
+Whether something is personal data (GDPR Art. 4(1)) depends on context, and
+whether the GDPR applies at all depends on who runs Tabularius: purely personal
+or household use is outside it (Art. 2(2)(c)); a business is a controller. The
+project makes no legal assessment for a deployment. It assumes **everything in
+the archive may be personal data** and provides the mechanisms a controller
+needs, on by default, at no cost to a personal user:
+
+| Need | Mechanism |
+|---|---|
+| Storage limitation (Art. 5(1)(e)) | Retention and expiry-year shards (§12.3) |
+| Erasure (Art. 17) | Early deletion of a document (§12.4) |
+| Access and portability (Art. 15, 20) | Search by party or identifier across all shards; export of the result (§9.3) |
+| Keep identifiers out of long-lived history | `sensitive` fields → salted payload files (§7.3) |
+| Accountability without keeping the data | Deletion ledger with no personal data (§12.4) |
+
+`sensitive` is a narrower, tool-defined idea than personal data: a value that
+is costly if it leaks through git history, typically a low-entropy identifier.
+Tabularius marks national identity numbers (`identifier` kind `personnummer`,
+and other national kinds as they are added) as sensitive wherever they occur.
+Profiles can mark more fields; nothing can unmark the built-in ones.
+
+Rules that keep personal data where the deployment expects it:
+
+- **Nothing leaves the machine by default.** The LLM endpoint defaults to a
+  local model. Pointing it at a remote service is an explicit setting that is
+  shown in `hledger-tab status` and in the TUI. The same applies to the agent
+  token: granting it to a hosted agent is a disclosure the deployment decides.
+- **No telemetry.**
+- **Logs carry ids and hashes, never field values or OCR text.**
+- **Templates contain anchors, not values.** Template drafting (§8.3) learns
+  from the text *around* confirmed values; `profile lint` rejects a template
+  whose patterns or keywords contain a confirmed value from a document.
+  Templates are local by default (§15); only types are meant to be shared.
+- **The public repository holds synthetic test documents only.** No real scans,
+  emails or OCR output in `tests/fixtures/`, ever.
+
 ---
 
 ## 8. Profiles and field records
@@ -668,7 +706,8 @@ tank/archive            encryption=on, compression=zstd, dedup=off
   secrets management, not in plain config.
 - Core runs as its own user with systemd hardening.
 - Converters/parsers sandboxed: no network, minimal filesystem.
-- Agent: read-only API token.
+- Agent: read-only API token. It can read personal data; who gets it is the
+  deployment's decision (§7.6).
 - Encryption at rest is the deployment's job (example: ZFS native encryption,
   §12.5). Sensitive field values are kept out of git history (§7.3).
 - PDF/A renditions strip JavaScript and active content; the TUI never opens
@@ -690,7 +729,7 @@ tank/archive            encryption=on, compression=zstd, dedup=off
 | Barcodes | zxing-cpp or pyzbar |
 | Email | stdlib `email`/`mailbox`; mbsync for sync |
 | Classifier | scikit-learn |
-| LLM | OpenAI-compatible / Ollama endpoint, local model |
+| LLM | OpenAI-compatible / Ollama endpoint; local by default, remote only by explicit setting (§7.6) |
 | TUI | Textual, textual-image |
 | Export | bagit-python |
 | Service | systemd units (core, adapters), Unix socket API |
@@ -742,6 +781,8 @@ Import name: `hledger_tab` (PyPI `tabularius` is taken by an unrelated package).
 7. Phone photos and email attachments in v1, or scanner only?
 8. Default retention for each starter type (`invoice`, `receipt`, … ), and which
    types default to `open`.
+9. Built-in sensitive kinds beyond national identity numbers: bank account
+   numbers, IBAN?
 
 ---
 

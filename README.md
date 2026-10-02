@@ -67,6 +67,9 @@ In short:
   profiles; the review UI renders fields by type, not by name.
 - **Shred only when proven safe.** Only after review *and* after your backup is
   confirmed to hold the original.
+- **Nothing leaves your machine by default.** OCR and the optional LLM run
+  locally; there is no telemetry. See [DESIGN.md §7.6](DESIGN.md#76-personal-data)
+  for how personal data is handled.
 - **Deletion is coarse and logged.** Documents are grouped by the year they
   expire, and a whole year is deleted at once. Every deletion is recorded.
 
