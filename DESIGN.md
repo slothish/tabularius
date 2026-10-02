@@ -941,7 +941,7 @@ Import name: `hledger_tab` (PyPI `tabularius` is taken by an unrelated package).
 
 ## 17. Milestones
 
-**M0 — Skeleton (1–2 evenings)**
+**M0 — Skeleton** *(done)*
 uv project, contracts (pydantic), invariant test suite stubs, `hledger-tab --version`.
 
 **M1 — Scanner to archive**

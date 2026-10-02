@@ -3,9 +3,10 @@
 Document intake, review and evidence archive for plain-text accounting.
 Python package and [hledger](https://hledger.org) add-on: **`hledger-tab`**.
 
-> **Status: design phase.** Nothing here runs yet. [DESIGN.md](DESIGN.md) is the
-> current plan; this README describes what Tabularius is meant to do, not what it
-> does today.
+> **Status: early development.** M0 is done: the data contracts exist and can be
+> printed as JSON Schema (`hledger-tab schema`), but nothing ingests documents
+> yet. [DESIGN.md](DESIGN.md) is the current plan; this README describes what
+> Tabularius is meant to do, not what it does today.
 
 ## What it is
 
@@ -88,18 +89,30 @@ How you store, encrypt and back up the archive is up to you.
 
 ## Roadmap
 
-| Milestone | Scope |
-|---|---|
-| M0 | Project skeleton, data contracts, invariant test stubs |
-| M1 | Scanner → write-once archive → PDF/A + OCR → index |
-| M2 | Review TUI v0 |
-| M3 | Document types, templates, field extraction, validators |
-| M4 | hledger integration (`docs.journal`, `check`, payment matching) |
-| M5 | Email intake |
-| M6 | BagIt export |
-| M7 | Backup verification, shred-OK, retention |
+| Milestone | Scope | Status |
+|---|---|---|
+| M0 | Project skeleton, data contracts, invariant test stubs | done |
+| M1 | Scanner → write-once archive → PDF/A + OCR → index | |
+| M2 | Review TUI v0 | |
+| M3 | Document types, templates, field extraction, validators | |
+| M4 | hledger integration (`docs.journal`, `check`, payment matching) | |
+| M5 | Email intake | |
+| M6 | BagIt export | |
+| M7 | Backup verification, shred-OK, retention | |
 
 Details and open questions are in [DESIGN.md](DESIGN.md).
+
+## Development
+
+```sh
+uv sync
+uv run ruff check && uv run ruff format --check && uv run pyright && uv run pytest
+uv run hledger-tab schema envelope   # print a contract as JSON Schema
+```
+
+`tests/invariants/` holds one test file per design invariant. Unimplemented
+checks are strict `xfail` stubs naming their milestone; skipping one, or
+deselecting one in CI, fails the run.
 
 ## Name
 
