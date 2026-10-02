@@ -1,0 +1,17 @@
+{
+  "intake_id": "0199b2c4-1a2b-7c3d-8e4f-000000000001",
+  "schema": "envelope/1",
+  "channel": "maildir",
+  "adapter": "maildir@0.1.0",
+  "received_at": "2026-10-02T08:14:03Z",
+  "source_ref": {"message_id": "<abc@example.se>", "mailbox": "Intake"},
+  "from": "faktura@example.se",
+  "subject": "Din faktura",
+  "files": [
+    {
+      "name": "original.eml",
+      "sha256": "9f2c000000000000000000000000000000000000000000000000000000000ee1",
+      "role": "container"
+    }
+  ]
+}

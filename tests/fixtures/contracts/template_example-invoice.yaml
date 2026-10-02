@@ -1,0 +1,13 @@
+# Adapted from DESIGN.md §8.2. The orgnr is fake.
+schema: template/1
+id: example-invoice
+version: 3
+type: invoice@2
+status: active
+match:
+  identifiers: {orgnr: "556000-0000"}
+  keywords_all: ["Faktura"]
+extract:
+  amount_due: {anchor: "Att betala",  pattern: '([\d\s]+,\d{2})'}
+  due_date:   {anchor: "Förfallodag", pattern: '(\d{4}-\d{2}-\d{2})'}
+  ocr:        {anchor: "OCR",         pattern: '(\d{6,25})'}

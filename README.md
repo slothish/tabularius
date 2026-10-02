@@ -1,0 +1,125 @@
+# Tabularius
+
+Document intake, review and evidence archive for plain-text accounting.
+Python package and [hledger](https://hledger.org) add-on: **`hledger-tab`**.
+
+> **Status: early development.** M0 is done: the data contracts exist and can be
+> printed as JSON Schema (`hledger-tab schema`), but nothing ingests documents
+> yet. [DESIGN.md](DESIGN.md) is the current plan; this README describes what
+> Tabularius is meant to do, not what it does today.
+
+## What it is
+
+Bills, receipts and letters arrive on paper and by email. Tabularius is meant to
+take each one through the same path:
+
+1. **Capture**: from a document scanner, an email folder, or a manual drop.
+2. **Understand**: OCR, split into documents, classify, extract fields
+   (amount, due date, OCR reference, …).
+3. **Review**: a keyboard-driven terminal UI where a person confirms or corrects
+   every value.
+4. **Act**: record a payable in hledger, or file it.
+5. **Keep**: store the original write-once with hashes, an archival PDF/A copy,
+   and an audit history, so the paper can be shredded once the archive is
+   verifiably backed up.
+
+It is **content-first**: the main record is what a document says and what has to
+be done about it. The file is kept as evidence.
+
+## How it relates to hledger
+
+hledger owns money; Tabularius owns documents. The two are linked through plain
+journal syntax, so the journal stays valid without the add-on:
+
+```journal
+2026-10-02 (V2026-0042) Telia | faktura 88412  ; doc:0199a1c3-…, due:2026-10-30
+    expenses:phone                     449.00 SEK
+    liabilities:payable:telia
+```
+
+- The transaction code is the verification number.
+- The `doc:<uuid>` tag points to a document in the archive.
+- Generated entries go to their own include file. Hand-written journal files
+  are never modified without explicit confirmation.
+
+Installed on `PATH`, the `hledger-tab` executable becomes the subcommand
+`hledger tab`. Planned commands:
+
+| Command | Purpose |
+|---|---|
+| `hledger tab check` | Every `doc:` tag resolves and every hash matches; for pre-commit/CI |
+| `hledger tab unlinked` | Documents about money that have no transaction |
+| `hledger tab show QUERY` | Open the documents behind matching transactions |
+| `hledger tab attach TXN DOC` | Link a document to an existing transaction |
+
+beancount has a `document` directive and Fava shows the linked files; hledger
+has no equivalent, and this project aims to fill that gap.
+
+## Principles
+
+The full list, with reasoning, is in [DESIGN.md §2](DESIGN.md#2-invariants).
+In short:
+
+- **Originals are write-once.** Copy, verify the hash, then remove the inbox copy.
+- **Nothing is silently lost.** Unknown formats and failed parses go to quarantine.
+- **Readable without the tool.** The archive is plain files and plain text, with a
+  README at the archive root.
+- **No hard-coded document types.** Types and per-sender templates are YAML
+  profiles; the review UI renders fields by type, not by name.
+- **Shred only when proven safe.** Only after review *and* after your backup is
+  confirmed to hold the original.
+- **Nothing leaves your machine by default.** OCR and the optional LLM run
+  locally; there is no telemetry. See [DESIGN.md §7.6](DESIGN.md#76-personal-data)
+  for how personal data is handled.
+- **Deletion is coarse and logged.** Documents are grouped by the year they
+  expire, and a whole year is deleted at once. Every deletion is recorded.
+
+## Planned requirements
+
+Linux only. Not final; see [DESIGN.md §14](DESIGN.md#14-tech-stack).
+
+- Python 3.13, [uv](https://docs.astral.sh/uv/)
+- hledger
+- ocrmypdf, Tesseract (`swe`, `eng`), qpdf, veraPDF
+- Optional: a local LLM through an OpenAI-compatible or Ollama endpoint, used
+  only when cheaper methods (identifiers, templates, a local classifier) are
+  uncertain
+
+How you store, encrypt and back up the archive is up to you.
+
+## Roadmap
+
+| Milestone | Scope | Status |
+|---|---|---|
+| M0 | Project skeleton, data contracts, invariant test stubs | done |
+| M1 | Scanner → write-once archive → PDF/A + OCR → index | |
+| M2 | Review TUI v0 | |
+| M3 | Document types, templates, field extraction, validators | |
+| M4 | hledger integration (`docs.journal`, `check`, payment matching) | |
+| M5 | Email intake | |
+| M6 | BagIt export | |
+| M7 | Backup verification, shred-OK, retention | |
+
+Details and open questions are in [DESIGN.md](DESIGN.md).
+
+## Development
+
+```sh
+uv sync
+uv run ruff check && uv run ruff format --check && uv run pyright && uv run pytest
+uv run hledger-tab schema envelope   # print a contract as JSON Schema
+```
+
+`tests/invariants/` holds one test file per design invariant. Unimplemented
+checks are strict `xfail` stubs naming their milestone; skipping one, or
+deselecting one in CI, fails the run.
+
+## Name
+
+A *tabularius* was a Roman record keeper or accountant. The PyPI name
+`tabularius` belongs to an unrelated project, so the package is `hledger-tab`
+and the import name is `hledger_tab`.
+
+## Licence
+
+[GNU General Public License v3.0 or later](LICENSE) (`GPL-3.0-or-later`).

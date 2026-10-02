@@ -1,0 +1,4 @@
+{"key": "amount_due", "label": "Att betala", "type": "money",
+ "value": {"amount": "449.00", "currency": "SEK"}, "confidence": 0.93,
+ "source": {"page": 1, "bbox": [412, 1180, 560, 1210], "method": "regex"},
+ "validation": {"ok": true}, "required": true, "origin": "profile"}

@@ -1,0 +1,53 @@
+[project]
+name = "hledger-tab"
+version = "0.0.0"
+description = "Document intake, review and evidence archive for plain-text accounting"
+readme = "README.md"
+requires-python = ">=3.13"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "Andreas" }]
+dependencies = [
+    # 2.11: UUID7, serialize_by_alias; 2.11.2: discriminators on PEP 695 aliases
+    "pydantic>=2.11.2",
+    "pyyaml>=6.0.3",
+]
+
+[project.scripts]
+hledger-tab = "hledger_tab.cli:main"
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.168.3",
+    "pyright>=1.1.414",
+    "pytest>=9.1.1",
+    "ruff>=0.16.10",
+    "types-pyyaml>=6.0.12.20260906",
+]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hledger_tab"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.13"
+typeCheckingMode = "strict"
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+xfail_strict = true
+addopts = ["--strict-markers", "--import-mode=importlib"]
+filterwarnings = ["error"]
