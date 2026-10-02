@@ -65,8 +65,10 @@ In short:
   README at the archive root.
 - **No hard-coded document types.** Types and per-sender templates are YAML
   profiles; the review UI renders fields by type, not by name.
-- **Shred only when proven safe.** Only after review *and* after the original's
-  hash is confirmed in a replicated backup.
+- **Shred only when proven safe.** Only after review *and* after your backup is
+  confirmed to hold the original.
+- **Deletion is coarse and logged.** Documents are grouped by the year they
+  expire, and a whole year is deleted at once. Every deletion is recorded.
 
 ## Planned requirements
 
