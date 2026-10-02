@@ -182,27 +182,61 @@ def tree(pytester: pytest.Pytester) -> pytest.Pytester:
     return pytester
 
 
-@pytest.mark.parametrize(
-    "args",
-    [
-        ["-k", "test_b"],
-        ["-m", "slow"],
-        ["--deselect", "invariants/test_inv.py::test_a"],
-    ],
-    ids=["-k", "-m", "--deselect"],
-)
-def test_deselecting_invariants_fails(tree: pytest.Pytester, args: list[str]) -> None:
+DESELECT_ARGS = [
+    ["-k", "test_b"],
+    ["-m", "slow"],
+    ["--deselect", "invariants/test_inv.py::test_a"],
+]
+
+
+@pytest.mark.parametrize("ci", ["true", "1"])
+@pytest.mark.parametrize("args", DESELECT_ARGS, ids=["-k", "-m", "--deselect"])
+def test_deselecting_invariants_fails_in_ci(
+    tree: pytest.Pytester, monkeypatch: pytest.MonkeyPatch, args: list[str], ci: str
+) -> None:
+    monkeypatch.setenv("CI", ci)
     result = tree.runpytest(*args)
     assert result.ret == pytest.ExitCode.USAGE_ERROR
     result.stderr.fnmatch_lines(["*invariant tests must not be deselected*"])
 
 
-def test_deselecting_elsewhere_is_fine(tree: pytest.Pytester) -> None:
+@pytest.mark.parametrize("ci", [None, "", "false", "0"])
+@pytest.mark.parametrize("args", DESELECT_ARGS, ids=["-k", "-m", "--deselect"])
+def test_deselecting_invariants_warns_locally(
+    tree: pytest.Pytester,
+    monkeypatch: pytest.MonkeyPatch,
+    args: list[str],
+    ci: str | None,
+) -> None:
+    if ci is None:
+        monkeypatch.delenv("CI", raising=False)
+    else:
+        monkeypatch.setenv("CI", ci)
+    # -W error: the local warning must not become an error under
+    # filterwarnings = error.
+    result = tree.runpytest("-W", "error", *args)
+    assert result.ret in (pytest.ExitCode.OK, pytest.ExitCode.NO_TESTS_COLLECTED)
+    result.stdout.fnmatch_lines(
+        [
+            "*WARNING: invariant tests deselected*",
+            "*invariant tests must not be deselected*",
+            "*invariants/test_inv.py::test_a",
+        ]
+    )
+
+
+def test_deselecting_elsewhere_is_fine(
+    tree: pytest.Pytester, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CI", "true")
     result = tree.runpytest("other", "-k", "not test_b")
     assert result.ret == pytest.ExitCode.NO_TESTS_COLLECTED
 
 
-def test_selecting_by_path_and_ignore_are_fine(tree: pytest.Pytester) -> None:
+def test_selecting_by_path_and_ignore_are_fine(
+    tree: pytest.Pytester, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CI", "true")
     tree.runpytest("other").assert_outcomes(passed=1)
     tree.runpytest("--ignore=invariants").assert_outcomes(passed=1)
     tree.runpytest().assert_outcomes(passed=2)
