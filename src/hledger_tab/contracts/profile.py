@@ -38,6 +38,9 @@ class FieldRole(StrEnum):
 class FieldDefinition(ContractModel):
     """One field a type asks for (§8.1).
 
+    ``description`` explains the field to the LLM extractor, which works from
+    "the type's field descriptions" (§6.6).
+
     Checks: ``kind`` is given iff ``type`` is ``identifier``; ``options`` is
     given iff ``type`` is ``enum``, non-empty and without repeats.
     """
@@ -45,6 +48,7 @@ class FieldDefinition(ContractModel):
     type: FieldType
     required: StrictBool = False
     label: NonEmptyStr | None = None
+    description: NonEmptyStr | None = None
     kind: IdentifierKind | None = None
     role: FieldRole | None = None
     sensitive: StrictBool = False
@@ -193,7 +197,8 @@ class TemplateMatch(ContractModel):
 class ExtractRule(ContractModel):
     """Find a value: the text after ``anchor`` that matches ``pattern`` (§8.2).
 
-    ``pattern`` must compile as a Python regular expression (``re``).
+    ``pattern`` must compile as a Python regular expression (``re``) and
+    have exactly one capturing group: the group is the value.
     """
 
     anchor: NonEmptyStr
@@ -201,13 +206,18 @@ class ExtractRule(ContractModel):
 
     @field_validator("pattern")
     @classmethod
-    def _pattern_compiles(cls, pattern: str) -> str:
+    def _pattern_compiles_with_one_group(cls, pattern: str) -> str:
         try:
-            re.compile(pattern)
+            compiled = re.compile(pattern)
         except re.error as error:
             raise ValueError(
                 f"pattern is not a valid regular expression: {error}"
             ) from None
+        if compiled.groups != 1:
+            raise ValueError(
+                "pattern must have exactly one capturing group, "
+                f"found {compiled.groups}"
+            )
         return pattern
 
 

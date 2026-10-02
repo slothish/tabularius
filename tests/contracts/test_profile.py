@@ -157,6 +157,14 @@ def test_bad_uniqueness_path(
         TypeProfile.model_validate(type_data)
 
 
+def test_field_description(type_data: dict[str, Any]) -> None:
+    text = "The total the supplier asks for, including VAT"
+    type_data["fields"]["amount_due"]["description"] = text
+    profile = TypeProfile.model_validate(type_data)
+    assert profile.fields["amount_due"].description == text
+    assert profile.fields["ocr"].description is None
+
+
 def test_field_key_must_be_snake_case(type_data: dict[str, Any]) -> None:
     type_data["fields"]["Due date"] = {"type": "date"}
     with pytest.raises(ValidationError):
@@ -183,6 +191,27 @@ def test_pattern_must_compile(template_data: dict[str, Any], pattern: str) -> No
     template_data["extract"]["ocr"]["pattern"] = pattern
     with pytest.raises(ValidationError, match="not a valid regular expression"):
         Template.model_validate(template_data)
+
+
+@pytest.mark.parametrize(
+    "pattern",
+    [r"\d{6,25}", r"(?:OCR)\s*\d+", r"(\d+)-(\d+)", r"((\d+))"],
+    ids=["no-group", "non-capturing-only", "two-groups", "nested-groups"],
+)
+def test_pattern_needs_exactly_one_group(
+    template_data: dict[str, Any], pattern: str
+) -> None:
+    template_data["extract"]["ocr"]["pattern"] = pattern
+    with pytest.raises(ValidationError, match="exactly one capturing group"):
+        Template.model_validate(template_data)
+
+
+@pytest.mark.parametrize("pattern", [r"(\d+)", r"(?:OCR:)\s*(\d+)", r"(?P<ocr>\d+)"])
+def test_pattern_with_one_group_accepted(
+    template_data: dict[str, Any], pattern: str
+) -> None:
+    template_data["extract"]["ocr"]["pattern"] = pattern
+    assert Template.model_validate(template_data).extract["ocr"].pattern == pattern
 
 
 @pytest.mark.parametrize(
