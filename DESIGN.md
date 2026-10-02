@@ -293,7 +293,8 @@ archive/
 - **Moving a confirmed document** (issue date or type corrected later) copies
   its blobs, intake envelope, sidecar and payload file into the new shard,
   verifies them (the payload against `payload_sha256`), and only then removes
-  them from the old one (`git rm` for the tracked files). The old shard's history keeps
+  from the old shard what no remaining document there references (`git rm`
+  for the tracked files); shared blobs and envelopes stay. The old shard's history keeps
   the sidecar until that shard is deleted; the move is recorded in both.
 - No human-readable filenames inside the archive. Readable names are produced
   only on export.
