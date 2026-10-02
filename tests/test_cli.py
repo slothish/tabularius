@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Tests for the ``hledger-tab`` command line entry point."""
 
+import importlib.metadata
 import subprocess
 import sys
 
@@ -18,7 +19,17 @@ def test_version_via_main(capsys: pytest.CaptureFixture[str]) -> None:
 
 
 def test_version_matches_package_metadata() -> None:
-    assert __version__ == "0.0.0"
+    assert __version__ == importlib.metadata.version("hledger-tab")
+
+
+def test_console_script_entry_point() -> None:
+    # The installed ``hledger-tab`` executable is what makes ``hledger tab``
+    # work as an hledger add-on (DESIGN.md §10.2).
+    (entry_point,) = importlib.metadata.entry_points(
+        group="console_scripts", name="hledger-tab"
+    )
+    assert entry_point.value == "hledger_tab.cli:main"
+    assert entry_point.load() is main
 
 
 def test_version_via_subprocess() -> None:
