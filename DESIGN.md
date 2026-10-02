@@ -3,14 +3,14 @@
 > Document intake, review and evidence archive for plain-text accounting.
 > Python package and hledger add-on: **`hledger-tab`**.
 
-Status: draft v0.1 · 2026-10-02 · Author: Andreas
+Status: draft v0.2 · 2026-10-02 · Author: Andreas
 
 ---
 
 ## 1. Purpose
 
 Paper and email documents arrive, get captured once, are understood (classified,
-fields extracted), reviewed by a human, acted upon (paid, submitted, filed), and
+fields extracted), reviewed by a human, acted upon (recorded in hledger, filed), and
 kept as verifiable evidence for as long as required. The paper is then shredded.
 
 Tabularius is **content-first**: the source of truth is *what a document says and
@@ -22,24 +22,21 @@ transaction code field (verification number).
 
 ### 1.1 In scope
 
-- Intake from a document scanner (Brother ADS-1800W), email (Fastmail, club IMAP),
+- Intake from a document scanner (Brother ADS-1800W), email (IMAP, e.g. Fastmail),
   and manual/agent drops.
-- Multiple **collections** with hard separation (personal; the swimming club's
-  treasury).
 - Format analysis and normalisation to an archival rendition (PDF/A-2b).
 - OCR, document splitting, identification, field extraction.
 - Generic, profile-driven extraction — no document type is hard-coded.
 - Keyboard-driven review in a TUI.
-- Actions: payables in hledger (personal), submission to the club's accountant
-  (club), filing.
+- Actions: payables in hledger, filing.
 - Evidence integrity: write-once originals, hashes, event history, verified backups.
 - Export as BagIt packages for handover.
 
 ### 1.2 Non-goals (for now)
 
 - Web UI, multi-user, mobile app. (The core API must not prevent adding one later.)
-- Doing the club's bookkeeping. The accountant and Fortnox do that; Tabularius
-  only handles receiving, checking and submitting.
+- More than one entity per archive. One archive serves one person, household or
+  business; another entity runs its own instance (§4, §11).
 - Paying bills.
 - Windows/macOS support.
 - Hard-coded country-specific rules in the core. Swedish specifics live in
@@ -65,10 +62,8 @@ These are the rules that must never be broken. Every one of them has tests.
    to quarantine or are kept as raw data — never silently dropped.
 6. **Readable without the tool.** The archive is plain files and plain text. A
    person with no copy of Tabularius can understand it from the files and the
-   README in each collection.
-7. **Collections never mix.** Separate storage, separate registry repository,
-   separate encryption key, separate export.
-8. **Shred only when proven safe.** "Shred OK" means: confirmed in review *and*
+   README at the archive root.
+7. **Shred only when proven safe.** "Shred OK" means: confirmed in review *and*
    the original's hash is present in a replicated snapshot on the backup target.
 
 ---
@@ -99,25 +94,14 @@ These are the rules that must never be broken. Every one of them has tests.
 
 ---
 
-## 4. Collections
+## 4. Scope: one entity
 
-A **collection** is *whose* documents these are. Each collection has its own:
+One archive holds the documents of one entity: a person, a household or a small
+business. There is no separation of owners inside an archive. A second entity
+runs a second, independent instance with its own archive, keys and backups.
 
-- ZFS dataset (own encryption root/key, own snapshot policy)
-- `store/` and `registry/` (registry is its own git repository)
-- default retention policy
-- export target
-- README describing the layout
-
-Initial collections:
-
-| Collection | Owner | Money flow | Notes |
-|---|---|---|---|
-| `personal` | Andreas | hledger (payables, links) | |
-| `club` | Ludvika Simsällskap | none; submission to accountant/Fortnox | Bookkeeping Act retention; GDPR; must be handable to a successor |
-
-The collection of an intake is decided by the channel (scanner destination,
-mailbox), not guessed. It can be changed in review.
+Earlier drafts had several *collections* (personal papers and a club's treasury)
+in one archive. That is parked; see §11.
 
 ---
 
@@ -125,12 +109,11 @@ mailbox), not guessed. It can be changed in review.
 
 ### 5.1 Channels
 
-| Channel | Mechanism | Default collection |
-|---|---|---|
-| Scanner | ADS-1800W scan profile → SFTP (preferred) or SMB, chrooted account, write-only to `inbox/scanner/<collection>/` | from the scan profile |
-| Personal mail | Fastmail intake folder (Sieve rules + manual move/forward) → mbsync → Maildir | `personal` |
-| Club mail | Club mailbox intake folder (`Underlag`) at the club's IT supplier → mbsync (`Sync Pull`) → Maildir | `club` |
-| Agent / manual | writes a bundle directly | explicit |
+| Channel | Mechanism |
+|---|---|
+| Scanner | ADS-1800W scan profile → SFTP (preferred) or SMB, chrooted account, write-only to `inbox/scanner/` |
+| Mail | Intake folder (e.g. Fastmail: Sieve rules + manual move/forward) → mbsync → Maildir |
+| Agent / manual | writes a bundle directly |
 
 Notes:
 - The scanner is an untrusted device. Its credential can only write to its inbox
@@ -158,9 +141,8 @@ inbox/ready/<intake_id>/
   "schema": "envelope/1",
   "channel": "scanner | maildir | agent | manual",
   "adapter": "scanner-sftp@0.1.0",
-  "collection_hint": "personal",
   "received_at": "2026-10-02T08:14:03Z",
-  "source_ref": {"message_id": "<abc@example.se>", "mailbox": "Underlag", "scan_profile": "club"},
+  "source_ref": {"message_id": "<abc@example.se>", "mailbox": "Intake", "scan_profile": "default"},
   "from": "faktura@example.se",
   "subject": "Din faktura",
   "files": [{"name": "original.eml", "sha256": "…", "role": "container"}]
@@ -175,7 +157,7 @@ never edited afterwards.
 - Blob level: sha256 (automatic, store is content-addressed).
 - Email level: `Message-ID`.
 - Business level: per profile uniqueness key, e.g. `(correspondent orgnr, invoice_no)`.
-  A duplicate is flagged in review ("already submitted 2026-09-14"), never
+  A duplicate is flagged in review ("already received 2026-09-14"), never
   silently dropped.
 
 ---
@@ -223,17 +205,16 @@ Every document gets an **archive rendition** in addition to the untouched origin
 
 One scan batch can contain several documents.
 
-1. Barcode separator sheets (preferred; may also carry a type/collection hint).
+1. Barcode separator sheets (preferred; may also carry a type hint).
 2. Blank-page / layout heuristics (suggested, never final without review).
 3. Manual split/merge/reorder in the TUI.
 
 ### 6.5 Identification (cheap and certain first)
 
-1. Channel/scan profile → collection (certain).
-2. Separator barcode hint.
-3. Known correspondent by hard identifier (orgnr, bankgiro, VAT number).
-4. Local classifier trained on confirmed documents (TF-IDF + logistic regression).
-5. LLM choosing among type descriptions (local model via an OpenAI-compatible or
+1. Separator barcode hint.
+2. Known correspondent by hard identifier (orgnr, bankgiro, VAT number).
+3. Local classifier trained on confirmed documents (TF-IDF + logistic regression).
+4. LLM choosing among type descriptions (local model via an OpenAI-compatible or
    Ollama endpoint), only when the steps above are uncertain.
 
 The method and confidence are stored with every classification.
@@ -263,10 +244,10 @@ The method and confidence are stored with every classification.
 One file can contain several documents; a document references
 `{sha256, pages}`. A rescanned document gets a new source, same UUID.
 
-### 7.2 Layout (per collection)
+### 7.2 Layout
 
 ```
-archive/<collection>/
+archive/
   README.md                       # how to read this archive without Tabularius
   store/                          # immutable, content-addressed, 0444, owned by core user
     9f/2c/9f2c…e1.eml
@@ -277,9 +258,9 @@ archive/<collection>/
   registry/                       # git repository, plain text
     intake/YYYY/<intake_id>.json  # envelopes, append-only
     docs/YYYY/<doc_uuid>.yaml     # sidecars — the only files that change
-  journal/docs.journal            # personal only: generated hledger entries
-archive/profiles/                 # types + templates (git; shareable part separable)
-archive/index.sqlite              # rebuildable cache, outside git and snapshots
+  journal/docs.journal            # generated hledger entries
+  profiles/                       # types + templates (git; shareable part separable)
+  index.sqlite                    # rebuildable cache, outside git and snapshots
 ```
 
 No human-readable filenames inside the archive. Readable names are produced only
@@ -290,7 +271,6 @@ on export.
 ```yaml
 id: 0199a1c2-7b3e-7f10-9c41-2d8e5a6b0f11
 schema: document/1
-collection: club
 intake: 0199a1c0-…
 container: {sha256: 9f2c…e1, kind: email}       # optional
 source:
@@ -309,16 +289,15 @@ fields:                         # list of field records, see §8
   - {key: amount_due, type: money, value: {amount: 12500.00, currency: SEK},
      confidence: 0.98, source: {page: 1, bbox: [412,1180,560,1210], method: template},
      validation: {ok: true}, origin: profile, confirmed: true}
-status: submitted               # received | needs_review | confirmed | submitted | filed | quarantined | expired
-expires: 2034-12-31
+status: confirmed               # received | needs_review | confirmed | filed | quarantined | expired
+expires: 2036-12-31
 events:
-  - {at: 2026-10-02T09:12:00Z, type: received, via: scanner/club}
+  - {at: 2026-10-02T09:12:00Z, type: received, via: scanner}
   - {at: 2026-10-02T19:40:00Z, type: confirmed, by: andreas}
-  - {at: 2026-10-02T19:41:00Z, type: submitted, to: accountant, channel: email,
-     message_id: "<…>"}
-  - {at: 2026-10-03T03:10:00Z, type: shred_ok, backup: "syncoid:tank/archive/club@…"}
+  - {at: 2026-10-02T19:40:01Z, type: payable_recorded, txn: V2026-0042}
+  - {at: 2026-10-03T03:10:00Z, type: shred_ok, backup: "…"}
 links:
-  hledger: []                   # personal: transaction codes / tags
+  hledger: [V2026-0042]         # transaction codes
 ```
 
 Every change to a sidecar is a git commit by the core with a structured message
@@ -358,10 +337,8 @@ fields:
   ocr:           {type: identifier, kind: ocr}
   bankgiro:      {type: identifier, kind: bankgiro}
 uniqueness: [correspondent.orgnr, invoice_no]
-retention: {personal: P10Y, club: bookkeeping}      # bookkeeping = 7 years after FY end
-on_confirm:
-  personal: {hledger: payable}
-  club:     {submit: accountant}
+retention: P10Y
+on_confirm: {hledger: payable}
 ```
 
 Starter set: `invoice`, `receipt`, `statement`, `letter`, `contract`, `notice`
@@ -467,18 +444,18 @@ Unknown types render as raw JSON. No per-document-type UI code, ever.
 
 ### 9.3 Screens and actions
 
-- **Queue**: sorted by due date and lowest confidence; filters per collection/status.
+- **Queue**: sorted by due date and lowest confidence; filters per status and type.
 - **Document**: page image | fields | OCR text toggle. Crop of the selected field's
   source box.
-- **Actions**: confirm · edit field · change type (re-extract) · change collection ·
+- **Actions**: confirm · edit field · change type (re-extract) ·
   split / merge / reorder / rotate / mark blank · accept/reject/promote discovered
-  fields · submit (club) · link to hledger transaction (personal) · mark filed.
+  fields · link to hledger transaction · mark filed.
 - **Search**: full text, correspondent, type, status, amount, date ranges.
 - **Integrity**: verify hashes, backup status, shred-OK list.
 - **Retention**: documents past `expires`, explicit confirm to delete (the only
   irreversible action; it must feel like one).
 - **Quarantine**: retry, convert, reject.
-- **Export**: BagIt per collection / year / selection.
+- **Export**: BagIt per year or selection.
 
 Keyboard-first, vim-style bindings, command palette.
 
@@ -527,19 +504,16 @@ An executable named `hledger-tab` on `PATH` becomes `hledger tab`.
 
 ---
 
-## 11. Club: dispatch, not bookkeeping
+## 11. Parked: organisations
 
-State machine: `received → confirmed → submitted → (acknowledged) → filed`.
+An earlier draft also covered a sports club's treasury. It is parked; nothing is
+built for it, but the core should not rule it out. Notes for when it comes back:
 
-- **Outbox adapter** sends to the accountant (SMTP via the club account) and records
-  `Message-ID`, recipient and timestamp as a `submitted` event.
-- Duplicate guard on the uniqueness key; warn if a document may already have reached
-  Fortnox through another channel.
-- The club archive must be handable to a successor treasurer: BagIt export plus
-  plain files; no Tabularius required to read it.
-- Governance: the board approves that copies of club documents live on Andreas's
-  infrastructure (minuted), and that the archive is handed over and deleted on his
-  side when he leaves the role.
+- Run it as a separate instance (§4), not as a section of a personal archive.
+- It needs a submission action (send to an external accountant, record the
+  `Message-ID` as an event), a duplicate guard against documents that arrived
+  through other channels, statutory retention per financial year, GDPR handling
+  of members' data, and a handover export to a successor (BagIt).
 
 ---
 
@@ -550,8 +524,7 @@ State machine: `received → confirmed → submitted → (acknowledged) → file
 ```
 tank/archive            encryption=on, compression=zstd, dedup=off
 ├── inbox               SFTP/SMB target; no snapshots; emptied by ingest
-├── personal            snapshots hourly/daily/monthly (sanoid)
-├── club                own encryption root (own key), own snapshot policy
+├── docs                snapshots hourly/daily/monthly (sanoid)
 └── index               SQLite cache; no snapshots
 ```
 
@@ -570,13 +543,7 @@ tank/archive            encryption=on, compression=zstd, dedup=off
 
 ### 12.3 Retention
 
-- `expires` per document from type × collection policy.
-  - Club bookkeeping material: until the end of the 7th year after the calendar
-    year in which the financial year ended (Bookkeeping Act). Paper originals may
-    be destroyed after digitisation since 1 July 2024, provided the transfer
-    carries no risk of alteration or loss.
-  - Club personal data otherwise: GDPR storage limitation — delete when no longer
-    needed.
+- `expires` per document from the type's retention policy.
 - Yearly retention job proposes deletions; confirmation in the TUI.
 - Snapshot and backup retention must be consistent with document deletion.
 
@@ -585,12 +552,12 @@ tank/archive            encryption=on, compression=zstd, dedup=off
 ## 13. Security
 
 - Scanner: untrusted; write-only inbox account; SFTP chroot (key auth if supported).
-- Mail ingestion: dedicated credentials scoped to intake folders; club password in
+- Mail ingestion: dedicated credentials scoped to intake folders; the password in
   secrets management, not in plain config.
 - Core runs as its own user with systemd hardening.
 - Converters/parsers sandboxed: no network, minimal filesystem.
 - Agent: read-only API token.
-- Disk encryption via ZFS native encryption; separate keys per collection.
+- Disk encryption via ZFS native encryption.
 - PDF/A renditions strip JavaScript and active content; the TUI never opens
   originals directly (temporary read-only copies only).
 
@@ -658,12 +625,8 @@ Import name: `hledger_tab` (PyPI `tabularius` is taken by an unrelated package).
 3. ADS-1800W: SFTP key authentication or password only? Which SMB version if SMB?
 4. Does the scanner's PDF/A-1b pass veraPDF?
 5. Sixel performance in foot with Textual (spike).
-6. Club submission channel: email to the accountant, Fortnox inbox upload, or both?
-7. Can the accountant/Fortnox report what has already arrived via other channels
-   (for duplicate detection)?
-8. Board approval for hosting club documents.
-9. ~~Licence (EUPL-1.2 vs MIT).~~ Decided: GPL-3.0-or-later.
-10. Phone photos and email attachments in v1, or scanner only?
+6. ~~Licence (EUPL-1.2 vs MIT).~~ Decided: GPL-3.0-or-later.
+7. Phone photos and email attachments in v1, or scanner only?
 
 ---
 
@@ -677,8 +640,8 @@ Scanner SFTP adapter → bundle → analyse → write-once store → ocrmypdf PD
 sidecar + git commit → SQLite index. Invariant tests green.
 
 **M2 — Review TUI v0**
-Queue, page image (Sixel spike / imv fallback), generic fields, confirm, change
-collection, split/merge.
+Queue, page image (Sixel spike / imv fallback), generic fields, confirm,
+split/merge.
 
 **M3 — Profiles**
 Types + LLM extraction with field records; validators (OCR, bankgiro, orgnr);
@@ -690,8 +653,8 @@ template drafting; `profile test`.
 **M5 — Email intake**
 mbsync + Maildir adapter, container/attachment model, dedup.
 
-**M6 — Club dispatch**
-Outbox adapter, submitted events, duplicate guard, BagIt export.
+**M6 — Export**
+BagIt export of a year or a selection, with readable file names.
 
 **M7 — Integrity and retention**
 sanoid/syncoid integration, shred-OK verification, retention job.

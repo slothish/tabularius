@@ -17,7 +17,7 @@ take each one through the same path:
    (amount, due date, OCR reference, …).
 3. **Review**: a keyboard-driven terminal UI where a person confirms or corrects
    every value.
-4. **Act**: record a payable in hledger, submit to an accountant, or file it.
+4. **Act**: record a payable in hledger, or file it.
 5. **Keep**: store the original write-once with hashes, an archival PDF/A copy,
    and an audit history, so the paper can be shredded once the archive is
    verifiably backed up.
@@ -62,9 +62,7 @@ In short:
 - **Originals are write-once.** Copy, verify the hash, then remove the inbox copy.
 - **Nothing is silently lost.** Unknown formats and failed parses go to quarantine.
 - **Readable without the tool.** The archive is plain files and plain text, with a
-  README in each collection.
-- **Collections never mix.** For example, personal papers and a club's treasury
-  get separate storage, keys and exports.
+  README at the archive root.
 - **No hard-coded document types.** Types and per-sender templates are YAML
   profiles; the review UI renders fields by type, not by name.
 - **Shred only when proven safe.** Only after review *and* after the original's
@@ -93,7 +91,7 @@ How you store, encrypt and back up the archive is up to you.
 | M3 | Document types, templates, field extraction, validators |
 | M4 | hledger integration (`docs.journal`, `check`, payment matching) |
 | M5 | Email intake |
-| M6 | Submission to an accountant, BagIt export |
+| M6 | BagIt export |
 | M7 | Backup verification, shred-OK, retention |
 
 Details and open questions are in [DESIGN.md](DESIGN.md).
