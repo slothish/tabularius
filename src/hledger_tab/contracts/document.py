@@ -172,8 +172,10 @@ class Document(ContractModel):
 
     - ``expires``, if set, is a 31 December (§8.1: expiry is always the end
       of a calendar year).
-    - ``expires``, if set together with ``issued``, is in a later year
-      (retention is at least one year, §8.1).
+    - ``expires``, if set together with ``issued``, is not in an earlier
+      year. The same year is allowed: an expiry set by hand on an
+      ``open``-retention document (e.g. a contract that ended, §8.1) may
+      fall in its issue year.
     - Shard assignment (§7.2): a confirmed or filed document has ``issued``
       and ``shard`` set; a document in staging (received, needs_review,
       quarantined) has ``shard: null``. ``expires`` may already be filled
@@ -211,14 +213,14 @@ class Document(ContractModel):
         return self
 
     @model_validator(mode="after")
-    def _expires_after_issue_year(self) -> Self:
+    def _expires_not_before_issue_year(self) -> Self:
         if (
             self.issued is not None
             and self.expires is not None
-            and self.expires.year <= self.issued.year
+            and self.expires.year < self.issued.year
         ):
             raise ValueError(
-                f"expires {self.expires} must be in a later year than "
+                f"expires {self.expires} must not be in an earlier year than "
                 f"issued {self.issued}"
             )
         return self

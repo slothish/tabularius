@@ -186,13 +186,17 @@ def test_open_shard_iff_no_expiry(data: dict[str, Any]) -> None:
     assert Document.model_validate(data).shard == "open"
 
 
-@pytest.mark.parametrize(
-    "expires", [date(2026, 12, 31), date(2025, 12, 31)], ids=["same-year", "earlier"]
-)
-def test_expires_must_be_after_issue_year(data: dict[str, Any], expires: date) -> None:
-    data.update(expires=expires, shard=str(expires.year))
-    with pytest.raises(ValidationError, match="must be in a later year"):
+def test_expires_must_not_be_before_issue_year(data: dict[str, Any]) -> None:
+    data.update(expires=date(2025, 12, 31), shard="2025")
+    with pytest.raises(ValidationError, match="must not be in an earlier year"):
         Document.model_validate(data)
+
+
+def test_expires_in_issue_year_is_fine(data: dict[str, Any]) -> None:
+    # An expiry set by hand on an open-retention document, e.g. a contract
+    # issued and ended in 2026.
+    data.update(expires=date(2026, 12, 31), shard="2026")
+    assert Document.model_validate(data).shard == "2026"
 
 
 def test_expires_next_year_is_fine(data: dict[str, Any]) -> None:
