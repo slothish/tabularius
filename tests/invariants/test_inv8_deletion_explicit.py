@@ -28,8 +28,9 @@ def test_shard_not_deletable_before_expiry_or_with_hold() -> None:
 
 @pytest.mark.xfail(strict=True, reason="not implemented: M7")
 def test_early_deletion_of_one_document_is_logged() -> None:
-    """Early deletion removes the document's blobs and payload, git-rms its sidecar,
-    and writes a ledger entry.
+    """Early deletion removes the document's payload and those of its blobs that no
+    other document in the shard references (shared blobs are kept, §12.4),
+    git-rms its sidecar, and writes a ledger entry.
     """
     raise NotImplementedError
 
@@ -46,5 +47,22 @@ def test_ledger_holds_no_personal_data() -> None:
 def test_normal_operation_never_rewrites_history() -> None:
     """After normal operations every earlier registry commit is still an ancestor of
     HEAD.
+    """
+    raise NotImplementedError
+
+
+@pytest.mark.xfail(strict=True, reason="not implemented: M7")
+def test_open_shard_history_rewrite_only_via_explicit_command() -> None:
+    """git filter-repo on the open shard happens only through its explicit
+    command, which asks for confirmation and records the rewrite in the
+    deletion ledger (§12.4).
+    """
+    raise NotImplementedError
+
+
+@pytest.mark.xfail(strict=True, reason="not implemented: M7")
+def test_deletion_purges_index() -> None:
+    """After any deletion (shard or single document) the document rows and FTS text are
+    gone from index.sqlite, and the database has been VACUUMed (§7.5).
     """
     raise NotImplementedError

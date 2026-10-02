@@ -45,3 +45,19 @@ def test_confirm_copies_and_verifies_before_removing_staging() -> None:
     commits before deleting the staging copies.
     """
     raise NotImplementedError
+
+
+@pytest.mark.xfail(strict=True, reason="not implemented: M2")
+def test_move_between_shards_copies_and_verifies_before_git_rm() -> None:
+    """Moving a confirmed document to another shard (issue date or type corrected)
+    copies and verifies it in the new shard before it is git-rm'd from the old one.
+    """
+    raise NotImplementedError
+
+
+@pytest.mark.xfail(strict=True, reason="not implemented: M2")
+def test_blob_shared_by_two_shards_is_copied_into_each() -> None:
+    """A blob needed by documents in two shards is copied into each shard's store and
+    verified there; neither shard refers to the other's store (§7.2).
+    """
+    raise NotImplementedError
