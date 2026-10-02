@@ -804,7 +804,8 @@ uv project, contracts (pydantic), invariant test suite stubs, `hledger-tab --ver
 Scanner SFTP adapter → bundle → analyse → write-once staging store → ocrmypdf
 PDF/A-2b → staging sidecar → SQLite index. Invariant tests green. The YAML
 loader rejects duplicate keys and YAML 1.1 booleans (`yes`, `on`), which
-PyYAML would otherwise accept silently.
+PyYAML would otherwise accept silently, and keeps dates and timestamps as
+strings so the contracts' canonical spellings are enforced.
 
 **M2 — Review TUI v0**
 Queue, page image (Sixel spike / imv fallback), generic fields, confirm (moves
