@@ -253,3 +253,12 @@ def test_profile_marked_field_is_sensitive() -> None:
 def test_profile_cannot_unmark_personnummer() -> None:
     # Whatever the profile marks, a personnummer stays sensitive.
     assert is_sensitive(_identifier("personnummer", key="pnr"), frozenset({"other"}))
+
+
+@pytest.mark.parametrize("text", ["1E+3", "0E-7", "1.5E-10"])
+def test_number_value_with_exponent_round_trips(text: str) -> None:
+    parsed = RECORD.validate_python(record("number", value=Decimal(text)))
+    dumped = RECORD.dump_python(parsed, mode="json")
+    assert dumped["value"] == format(Decimal(text), "f")
+    assert RECORD.validate_python(dumped) == parsed
+    assert RECORD.validate_json(RECORD.dump_json(parsed)) == parsed

@@ -3,9 +3,11 @@
 
 from collections.abc import Callable
 from datetime import date
+from decimal import Decimal
 from typing import Any
 
 import pytest
+import yaml
 from pydantic import ValidationError
 
 from hledger_tab.contracts.document import Document, Status
@@ -313,3 +315,34 @@ def test_amount_as_float_rejected(data: dict[str, Any]) -> None:
     data["fields"][0]["value"]["amount"] = 12500.00
     with pytest.raises(ValidationError, match="floats are not accepted"):
         Document.model_validate(data)
+
+
+def test_document_with_exponent_decimals_round_trips_via_json_and_yaml(
+    data: dict[str, Any],
+) -> None:
+    data["fields"][0]["value"]["amount"] = Decimal("1.25E+4")
+    data["fields"].append(
+        {
+            "key": "rate",
+            "type": "number",
+            "value": Decimal("1.5E-10"),
+            "origin": "discovered",
+        }
+    )
+    doc = Document.model_validate(data)
+    assert Document.model_validate_json(doc.model_dump_json()) == doc
+    text = yaml.safe_dump(doc.model_dump(mode="json"), allow_unicode=True)
+    assert "E+" not in text and "E-" not in text
+    assert Document.model_validate(yaml.safe_load(text)) == doc
+
+
+def test_document_timestamps_and_dates_dump_canonically(data: dict[str, Any]) -> None:
+    dumped = Document.model_validate(data).model_dump(mode="json")
+    assert dumped["issued"] == "2026-09-28"
+    assert dumped["expires"] == "2036-12-31"
+    assert [e["at"] for e in dumped["events"]] == [
+        "2026-10-02T09:12:00Z",
+        "2026-10-02T19:40:00Z",
+        "2026-10-02T19:40:01Z",
+        "2026-10-03T03:10:00Z",
+    ]

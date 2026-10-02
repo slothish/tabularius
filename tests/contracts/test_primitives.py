@@ -4,12 +4,13 @@
 import inspect
 import json
 import re
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
 import pytest
+import yaml
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
 import hledger_tab.contracts.document
@@ -19,7 +20,9 @@ import hledger_tab.contracts.field
 import hledger_tab.contracts.primitives
 import hledger_tab.contracts.profile
 from hledger_tab.contracts.primitives import (
+    DATE_PATTERN,
     DECIMAL_PATTERN,
+    TIMESTAMP_PATTERN,
     UUID7_PATTERN,
     Confidence,
     ContractModel,
@@ -325,6 +328,117 @@ def test_timestamp_rejects_numbers_and_naive(value: object) -> None:
 def test_timestamp_rejects_json_number() -> None:
     with pytest.raises(ValidationError):
         TIMESTAMP.validate_json("0")
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        datetime(2026, 10, 2, tzinfo=UTC),
+        datetime(2026, 10, 2),
+        "2026-10-02T00:00:00Z",
+        "2026-10-02T00:00:00",
+        "2026-10-02 00:00",
+        "2026-9-28",
+        "2026-09-28 ",
+        "20260928",
+    ],
+    ids=repr,
+)
+def test_iso_date_rejects_non_canonical(value: object) -> None:
+    with pytest.raises(ValidationError):
+        ISO_DATE.validate_python(value)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("2026-10-02T09:12:00Z", datetime(2026, 10, 2, 9, 12, tzinfo=UTC)),
+        (
+            "2026-10-02T11:12:00+02:00",
+            datetime(2026, 10, 2, 11, 12, tzinfo=timezone(timedelta(hours=2))),
+        ),
+        (
+            "2026-10-02T09:12:00.123456Z",
+            datetime(2026, 10, 2, 9, 12, 0, 123456, tzinfo=UTC),
+        ),
+        ("2026-10-02T09:12:00.5-05:00", None),
+    ],
+)
+def test_timestamp_accepts_rfc3339(text: str, expected: datetime | None) -> None:
+    parsed = TIMESTAMP.validate_python(text)
+    if expected is not None:
+        assert parsed == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "2026-10-02 09:12:00Z",  # space instead of T
+        "2026-10-02t09:12:00Z",  # lowercase t
+        "2026-10-02T09:12:00z",  # lowercase z
+        "2026-10-02T09:12Z",  # no seconds
+        "2026-10-02T09:12:00+0200",  # offset without colon
+        "2026-10-02T09:12:00+02",  # offset without minutes
+        "2026-10-02T09:12:00.1234567Z",  # 7 fractional digits
+        "2026-10-02T09:12:00.Z",  # empty fraction
+        "2026-10-02",  # date only
+    ],
+)
+def test_timestamp_rejects_non_canonical(text: str) -> None:
+    with pytest.raises(ValidationError, match="RFC 3339"):
+        TIMESTAMP.validate_python(text)
+    with pytest.raises(ValidationError):
+        TIMESTAMP.validate_json(json.dumps(text))
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        datetime(2026, 10, 2, 9, 12, tzinfo=UTC),
+        datetime(2026, 10, 2, 9, 12, 0, 1, tzinfo=timezone(timedelta(hours=-5))),
+        datetime(
+            2026, 10, 2, 9, 12, 30, tzinfo=timezone(timedelta(hours=5, minutes=30))
+        ),
+    ],
+)
+def test_timestamp_dumps_in_canonical_form(value: datetime) -> None:
+    dumped = TIMESTAMP.dump_python(value, mode="json")
+    assert re.fullmatch(TIMESTAMP_PATTERN, dumped), dumped
+    assert TIMESTAMP.validate_python(dumped) == value
+
+
+def test_iso_date_dumps_in_canonical_form() -> None:
+    dumped = ISO_DATE.dump_python(date(2026, 9, 28), mode="json")
+    assert dumped == "2026-09-28"
+    assert re.fullmatch(DATE_PATTERN, dumped)
+
+
+def test_date_and_timestamp_schemas_publish_patterns() -> None:
+    assert ISO_DATE.json_schema()["pattern"] == DATE_PATTERN
+    assert TIMESTAMP.json_schema()["pattern"] == TIMESTAMP_PATTERN
+
+
+# --- Decimal serialisation ----------------------------------------------------
+
+EXPONENT_DECIMALS = ["1E+3", "0E-7", "1.5E-10", "-2.50E+2", "1E+30", "-0"]
+
+
+@pytest.mark.parametrize("text", EXPONENT_DECIMALS)
+def test_decimal_dumps_in_plain_notation(text: str) -> None:
+    value = Decimal(text)
+    dumped = DECIMAL.dump_python(value, mode="json")
+    assert re.fullmatch(DECIMAL_PATTERN, dumped), dumped
+    assert DECIMAL.dump_json(value) == json.dumps(dumped).encode()
+    assert DECIMAL.validate_python(dumped) == value
+
+
+@pytest.mark.parametrize("text", EXPONENT_DECIMALS)
+def test_money_with_exponent_round_trips(text: str) -> None:
+    money = Money(amount=Decimal(text), currency="SEK")
+    assert Money.model_validate(money.model_dump(mode="json")) == money
+    assert Money.model_validate_json(money.model_dump_json()) == money
+    reloaded = yaml.safe_load(yaml.safe_dump(money.model_dump(mode="json")))
+    assert Money.model_validate(reloaded) == money
 
 
 # --- Retention --------------------------------------------------------------

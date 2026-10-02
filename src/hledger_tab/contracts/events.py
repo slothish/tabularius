@@ -47,17 +47,32 @@ class PayableRecordedEvent(_EventBase):
     txn: TxnCode
 
 
-class ShredOkEvent(_EventBase):
-    """The backup verifier confirmed the original is held off this machine
-    (§2 invariant 7, §12.2).
+class BackupConfirmation(ContractModel):
+    """One answer line of the backup verifier, ``<sha256> <backup ref>``
+    (§12.2): the blob ``sha256`` is held in the backup ``backup``."""
 
-    Records the verifier's answer line ``<sha256> <backup ref>``: ``sha256``
-    is the original's hash, ``backup`` the reference the verifier printed.
+    sha256: Sha256
+    backup: NonEmptyStr
+
+
+class ShredOkEvent(_EventBase):
+    """The backup verifier confirmed the document's originals are held off
+    this machine (§2 invariant 7, §12.2).
+
+    ``backups`` has one entry per original blob the document references:
+    the original file and, if any, its container (e.g. the ``.eml``).
+    shred_ok is only set when every one of them is confirmed.
     """
 
     type: Literal["shred_ok"]
-    sha256: Sha256
-    backup: NonEmptyStr
+    backups: list[BackupConfirmation] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _one_entry_per_blob(self) -> Self:
+        hashes = [b.sha256 for b in self.backups]
+        if len(set(hashes)) != len(hashes):
+            raise ValueError("backups must not list a sha256 twice")
+        return self
 
 
 class MovedEvent(_EventBase):

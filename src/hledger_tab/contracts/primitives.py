@@ -7,7 +7,7 @@ validation. See DESIGN.md §7.1 (identity), §8.1 and §12.3 (retention),
 """
 
 import re
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Any, Final, Literal
 from uuid import UUID
@@ -18,6 +18,7 @@ from pydantic import (
     BeforeValidator,
     ConfigDict,
     Field,
+    PlainSerializer,
     Strict,
     StringConstraints,
     WithJsonSchema,
@@ -99,24 +100,66 @@ type Confidence = Annotated[float, Strict(), Field(ge=0.0, le=1.0)]
 string input."""
 
 
-def _reject_non_iso_dates(value: Any) -> Any:
-    """Refuse numbers and timestamps for dates and datetimes.
+DATE_PATTERN: Final = r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+"""The one spelling of a date: ``YYYY-MM-DD``."""
 
-    A string must start with a four-digit year and ``-`` (ISO 8601); pydantic
-    then parses it. ``date``/``datetime`` objects pass unchanged.
+TIMESTAMP_PATTERN: Final = (
+    r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,6})?"
+    r"(Z|[+-][0-9]{2}:[0-9]{2})$"
+)
+"""The one spelling of a timestamp: RFC 3339 with uppercase ``T`` and ``Z``,
+seconds, at most 6 fractional digits (more would be silently truncated) and
+an offset with a colon, e.g. ``2026-10-02T08:14:03Z``."""
+
+
+def _canonical_date(value: Any) -> Any:
+    """Accept a ``date`` object or a string matching ``DATE_PATTERN`` only.
+
+    The archive is plain text (§2, invariant 6), so every date has one
+    spelling. Refused: numbers and bools (pydantic would read them as Unix
+    timestamps), ``datetime`` objects and strings with a time part.
     """
-    if isinstance(value, int | float):  # includes bool
-        raise ValueError("must be an ISO 8601 date or timestamp, not a number")
-    if isinstance(value, str) and not re.match(r"[0-9]{4}-", value):
-        raise ValueError("must be an ISO 8601 date or timestamp (YYYY-MM-DD...)")
-    return value
+    if isinstance(value, datetime):
+        raise ValueError("must be a date (YYYY-MM-DD), not a date and time")
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str) and re.fullmatch(DATE_PATTERN, value):
+        return value
+    raise ValueError("must be a date written YYYY-MM-DD")
 
 
-type IsoDate = Annotated[date, BeforeValidator(_reject_non_iso_dates)]
+def _canonical_timestamp(value: Any) -> Any:
+    """Accept a ``datetime`` object or a string matching ``TIMESTAMP_PATTERN``.
+
+    Refused: numbers and bools, a space instead of ``T``, lowercase ``t``/``z``,
+    missing seconds, an offset without colon (``+0200``) and more than six
+    fractional digits.
+    """
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str) and re.fullmatch(TIMESTAMP_PATTERN, value):
+        return value
+    raise ValueError(
+        "must be an RFC 3339 timestamp such as 2026-10-02T08:14:03Z "
+        "(uppercase T and Z, seconds, offset as +HH:MM)"
+    )
+
+
+type IsoDate = Annotated[
+    date,
+    BeforeValidator(_canonical_date),
+    WithJsonSchema({"type": "string", "format": "date", "pattern": DATE_PATTERN}),
+]
 """A calendar date, written ``YYYY-MM-DD``."""
 
-type Timestamp = Annotated[AwareDatetime, BeforeValidator(_reject_non_iso_dates)]
-"""A timezone-aware ISO 8601 timestamp, e.g. ``2026-10-02T08:14:03Z``."""
+type Timestamp = Annotated[
+    AwareDatetime,
+    BeforeValidator(_canonical_timestamp),
+    WithJsonSchema(
+        {"type": "string", "format": "date-time", "pattern": TIMESTAMP_PATTERN}
+    ),
+]
+"""A timezone-aware RFC 3339 timestamp, e.g. ``2026-10-02T08:14:03Z``."""
 
 
 # --- Names and references -----------------------------------------------------
@@ -180,16 +223,25 @@ def _decimal_input(value: Any) -> Any:
     raise ValueError('must be an integer or a decimal string such as "449.10"')
 
 
+def _plain_notation(value: Decimal) -> str:
+    """Write a decimal without exponent, e.g. ``Decimal("1E+3")`` as
+    ``"1000"``, so that every dumped value matches ``DECIMAL_PATTERN`` and
+    loads back. ``str()`` would give ``"1E+3"``."""
+    return format(value, "f")
+
+
 type DecimalValue = Annotated[
     Decimal,
     BeforeValidator(_decimal_input),
     Field(allow_inf_nan=False),
+    PlainSerializer(_plain_notation, return_type=str, when_used="json"),
     WithJsonSchema(
         {"anyOf": [{"type": "integer"}, {"type": "string", "pattern": DECIMAL_PATTERN}]}
     ),
 ]
 """A finite decimal number that never passed through a float. On the wire:
-an integer, or a string matching ``DECIMAL_PATTERN``."""
+an integer, or a string matching ``DECIMAL_PATTERN``; it is always written
+as such a string."""
 
 type Currency = Annotated[str, StringConstraints(pattern=r"^[A-Z]{3}$")]
 """An ISO 4217 style currency code: three uppercase letters, e.g. ``SEK``.

@@ -33,8 +33,12 @@ events:
   - {at: 2026-10-02T09:12:00Z, type: received, via: scanner}
   - {at: 2026-10-02T19:40:00Z, type: confirmed, by: andreas}
   - {at: 2026-10-02T19:40:01Z, type: payable_recorded, txn: V2026-0042}
-  - {at: 2026-10-03T03:10:00Z, type: shred_ok,
-     sha256: 41aa000000000000000000000000000000000000000000000000000000000007,
-     backup: "backup-host:tank/archive/docs@monthly-2026-10"}
+  - at: 2026-10-03T03:10:00Z
+    type: shred_ok
+    backups:   # one per original blob: the original and its container
+      - {sha256: 41aa000000000000000000000000000000000000000000000000000000000007,
+         backup: "backup-host:tank/archive/docs@monthly-2026-10"}
+      - {sha256: 9f2c000000000000000000000000000000000000000000000000000000000ee1,
+         backup: "backup-host:tank/archive/docs@monthly-2026-10"}
 links:
   hledger: [V2026-0042]
