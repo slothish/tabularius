@@ -7,16 +7,22 @@ requires-python = ">=3.13"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 authors = [{ name = "Andreas" }]
-dependencies = []
+dependencies = [
+    # 2.11: UUID7, serialize_by_alias; 2.11.2: discriminators on PEP 695 aliases
+    "pydantic>=2.11.2",
+    "pyyaml>=6.0.3",
+]
 
 [project.scripts]
 hledger-tab = "hledger_tab.cli:main"
 
 [dependency-groups]
 dev = [
+    "hypothesis>=6.168.3",
     "pyright",
     "pytest",
     "ruff",
+    "types-pyyaml>=6.0.12.20260906",
 ]
 
 [build-system]
@@ -43,4 +49,5 @@ venv = ".venv"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 xfail_strict = true
-addopts = "--strict-markers"
+addopts = ["--strict-markers", "--import-mode=importlib"]
+filterwarnings = ["error"]

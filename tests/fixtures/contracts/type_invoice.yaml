@@ -1,0 +1,16 @@
+# Adapted from DESIGN.md §8.1.
+schema: type/1
+id: invoice
+version: 2
+description: "Request for payment from a supplier"
+fields:
+  correspondent: {type: party,      required: true, label: "Avsändare"}
+  invoice_no:    {type: identifier, kind: invoice_no, required: true}
+  amount_due:    {type: money,      required: true, label: "Att betala"}
+  issue_date:    {type: date,       required: true, label: "Fakturadatum", role: issued}
+  due_date:      {type: date,       required: true, label: "Förfallodag"}
+  ocr:           {type: identifier, kind: ocr}
+  bankgiro:      {type: identifier, kind: bankgiro}
+uniqueness: [correspondent.orgnr, invoice_no]
+retention: P10Y
+on_confirm: {hledger: payable}

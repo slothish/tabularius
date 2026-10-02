@@ -1,0 +1,40 @@
+# Synthetic sidecar adapted from DESIGN.md §7.3. All ids and hashes are fake.
+id: 0199a1c2-7b3e-7f10-9c41-2d8e5a6b0f11
+schema: document/1
+intake: 0199a1c0-0000-7000-8000-000000000001
+container: {sha256: 9f2c000000000000000000000000000000000000000000000000000000000ee1, kind: email}
+source:
+  original:  {sha256: 41aa000000000000000000000000000000000000000000000000000000000007,
+              mime: application/pdf, pages: [1, 2],
+              claimed: PDF/A-1b, verapdf: fail, born_digital: false, dpi: 300}
+  archive:   {sha256: c31000000000000000000000000000000000000000000000000000000000009b,
+              format: PDF/A-2b, verapdf: pass,
+              tools: {ocrmypdf: "16.x", tesseract: "5.x", langs: swe+eng}}
+  text:      {sha256: 77e200000000000000000000000000000000000000000000000000000000004d}
+  hocr:      {sha256: 5b9000000000000000000000000000000000000000000000000000000000000a}
+classification:
+  type: invoice@2
+  template: example-invoice@3
+  method: identifier
+  confidence: 1.0
+fields:
+  - {key: amount_due, type: money, value: {amount: "12500.00", currency: SEK},
+     confidence: 0.98, source: {page: 1, bbox: [412, 1180, 560, 1210], method: template},
+     validation: {ok: true}, origin: profile, confirmed: true}
+  - {key: personnummer, type: identifier, kind: personnummer,
+     value: {payload: true}, origin: discovered, confirmed: true}
+status: confirmed
+issued: 2026-09-28
+expires: 2036-12-31
+shard: "2036"
+hold: null
+payload_sha256: 3e7a0000000000000000000000000000000000000000000000000000000000c1
+events:
+  - {at: 2026-10-02T09:12:00Z, type: received, via: scanner}
+  - {at: 2026-10-02T19:40:00Z, type: confirmed, by: andreas}
+  - {at: 2026-10-02T19:40:01Z, type: payable_recorded, txn: V2026-0042}
+  - {at: 2026-10-03T03:10:00Z, type: shred_ok,
+     sha256: 41aa000000000000000000000000000000000000000000000000000000000007,
+     backup: "backup-host:tank/archive/docs@monthly-2026-10"}
+links:
+  hledger: [V2026-0042]

@@ -5,9 +5,11 @@ Run as ``hledger-tab`` or, through hledger's add-on mechanism, ``hledger tab``.
 """
 
 import argparse
+import json
 from collections.abc import Callable, Sequence
 
 from hledger_tab import __version__
+from hledger_tab.contracts import CONTRACTS, json_schema
 
 PROG = "hledger-tab"
 
@@ -21,9 +23,31 @@ def build_parser() -> argparse.ArgumentParser:
         description="Document intake, review and evidence archive for hledger.",
     )
     parser.add_argument("--version", action="version", version=f"{PROG} {__version__}")
-    # Subcommands are added here; each sets ``handler`` via ``set_defaults``.
-    parser.add_subparsers(title="commands", metavar="COMMAND")
+    # Each subcommand sets ``handler`` via ``set_defaults``.
+    commands = parser.add_subparsers(title="commands", metavar="COMMAND")
+
+    schema = commands.add_parser(
+        "schema",
+        help="print the JSON Schema of a contract",
+        description=(
+            "Print the JSON Schema of the contract NAME, "
+            "or list the contract names when NAME is omitted."
+        ),
+    )
+    schema.add_argument("name", nargs="?", choices=list(CONTRACTS), metavar="NAME")
+    schema.set_defaults(handler=run_schema)
     return parser
+
+
+def run_schema(args: argparse.Namespace) -> int:
+    """``hledger-tab schema [NAME]``."""
+    name: str | None = args.name
+    if name is None:
+        for contract in CONTRACTS:
+            print(contract)
+    else:
+        print(json.dumps(json_schema(name), indent=2, ensure_ascii=False))
+    return 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:

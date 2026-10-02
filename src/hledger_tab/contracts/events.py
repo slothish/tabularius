@@ -1,0 +1,115 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Document events: the ``events`` list of a sidecar (DESIGN.md §7.3).
+
+``Event`` is a union discriminated on ``type``. Every event has a
+timezone-aware ``at``. Events are appended, never edited; git history of the
+sidecar is the audit log (§7.3).
+"""
+
+from typing import Annotated, Literal, Self
+
+from pydantic import AwareDatetime, Field, model_validator
+
+from hledger_tab.contracts.envelope import Channel
+from hledger_tab.contracts.primitives import (
+    Actor,
+    ContractModel,
+    NonEmptyStr,
+    Sha256,
+    ShardName,
+    TxnCode,
+)
+
+
+class _EventBase(ContractModel):
+    at: AwareDatetime
+
+
+class ReceivedEvent(_EventBase):
+    """The document arrived through ``via`` (§5.1)."""
+
+    type: Literal["received"]
+    via: Channel
+
+
+class ConfirmedEvent(_EventBase):
+    """A person confirmed the document in review (§9.3)."""
+
+    type: Literal["confirmed"]
+    by: Actor
+
+
+class PayableRecordedEvent(_EventBase):
+    """A payable was written to ``docs.journal`` as transaction ``txn`` (§10.1)."""
+
+    type: Literal["payable_recorded"]
+    txn: TxnCode
+
+
+class ShredOkEvent(_EventBase):
+    """The backup verifier confirmed the original is held off this machine
+    (§2 invariant 7, §12.2).
+
+    Records the verifier's answer line ``<sha256> <backup ref>``: ``sha256``
+    is the original's hash, ``backup`` the reference the verifier printed.
+    """
+
+    type: Literal["shred_ok"]
+    sha256: Sha256
+    backup: NonEmptyStr
+
+
+class MovedEvent(_EventBase):
+    """The confirmed document was moved between shards, e.g. after its issue
+    date or type was corrected (§7.2), or to ``open`` because of a hold
+    (§12.4). Recorded in both shards."""
+
+    type: Literal["moved"]
+    from_shard: ShardName
+    to_shard: ShardName
+    by: Actor
+    reason: NonEmptyStr | None = None
+
+    @model_validator(mode="after")
+    def _shards_differ(self) -> Self:
+        if self.from_shard == self.to_shard:
+            raise ValueError("a move must change the shard")
+        return self
+
+
+class HoldSetEvent(_EventBase):
+    """A legal hold was placed on the document (§12.4)."""
+
+    type: Literal["hold_set"]
+    by: Actor
+    reason: NonEmptyStr
+
+
+class HoldReleasedEvent(_EventBase):
+    """The legal hold was lifted (§12.4)."""
+
+    type: Literal["hold_released"]
+    by: Actor
+    reason: NonEmptyStr | None = None
+
+
+class QuarantinedEvent(_EventBase):
+    """Processing failed and the document went to quarantine (§2 invariant 5,
+    §6.1)."""
+
+    type: Literal["quarantined"]
+    reason: NonEmptyStr
+
+
+type Event = Annotated[
+    ReceivedEvent
+    | ConfirmedEvent
+    | PayableRecordedEvent
+    | ShredOkEvent
+    | MovedEvent
+    | HoldSetEvent
+    | HoldReleasedEvent
+    | QuarantinedEvent,
+    Field(discriminator="type"),
+]
+"""Any document event, selected by its ``type`` key."""
