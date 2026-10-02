@@ -102,6 +102,47 @@ def _valid_xfail(marker: ast.expr) -> bool:
     )
 
 
+def _mentions_mark(node: ast.AST) -> bool:
+    """Whether ``node`` refers to ``pytest.mark`` or a bare ``mark``."""
+    text = ast.unparse(node)
+    return "pytest.mark" in text or re.search(r"\bmark\b", text) is not None
+
+
+def marker_problems(module: ast.Module) -> list[str]:
+    """Every way ``module`` attaches markers other than the allowed form.
+
+    Allowed: a test function decorated with exactly
+    ``@pytest.mark.xfail(strict=True, reason="not implemented: M<n>")`` while
+    it is a stub, and with nothing once implemented. Refused: any other
+    decorator (including an alias such as ``xf = pytest.mark.xfail(...)``
+    then ``@xf``), module-level assignments of ``pytest.mark`` anything
+    (``pytestmark`` included), ``from pytest import mark``, and classes.
+    """
+    problems: list[str] = []
+    for node in module.body:
+        if isinstance(node, ast.Assign | ast.AnnAssign | ast.AugAssign):
+            if node.value is not None and _mentions_mark(node.value):
+                problems.append(f"module-level marker assignment: {ast.unparse(node)}")
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if any(ast.unparse(t) == "pytestmark" for t in targets):
+                problems.append("module-level pytestmark")
+        elif isinstance(node, ast.ImportFrom) and node.module == "pytest":
+            problems.append(f"import from pytest: {ast.unparse(node)}")
+        elif isinstance(node, ast.ClassDef):
+            problems.append(f"class {node.name}: put tests in plain functions")
+    for function in _tests(module):
+        stub = _is_stub(function)
+        for decorator in function.decorator_list:
+            if not (stub and _valid_xfail(decorator)):
+                problems.append(f"{function.name}: decorator @{ast.unparse(decorator)}")
+        if stub and len(function.decorator_list) != 1:
+            problems.append(
+                f"{function.name}: a stub needs exactly "
+                '@pytest.mark.xfail(strict=True, reason="not implemented: M<n>")'
+            )
+    return problems
+
+
 # --- Parsing DESIGN.md --------------------------------------------------------
 
 
@@ -157,27 +198,8 @@ def test_at_least_two_checks_per_invariant(number: int) -> None:
 
 
 @pytest.mark.parametrize("number", range(1, 9))
-def test_no_pytestmark_and_no_classes(number: int) -> None:
-    # Markers belong on each function, where this meta-test can see them; the
-    # conftest still checks module and class pytestmark at runtime.
-    module = _module(number)
-    names = {n.id for n in ast.walk(module) if isinstance(n, ast.Name)}
-    assert "pytestmark" not in names
-    assert not [n for n in module.body if isinstance(n, ast.ClassDef)]
-
-
-@pytest.mark.parametrize("number", range(1, 9))
-def test_stubs_are_strict_xfail_and_implemented_tests_are_not(number: int) -> None:
-    for function in _tests(_module(number)):
-        markers = _xfail_markers(function)
-        if _is_stub(function):
-            assert len(markers) == 1, f"{function.name}: stub needs one xfail"
-            assert _valid_xfail(markers[0]), (
-                f"{function.name}: must be "
-                '@pytest.mark.xfail(strict=True, reason="not implemented: M<n>")'
-            )
-        else:
-            assert not markers, f"{function.name}: implemented, remove its xfail"
+def test_markers_only_in_the_allowed_form(number: int) -> None:
+    assert marker_problems(_module(number)) == []
 
 
 # --- The checker itself -------------------------------------------------------
@@ -222,3 +244,55 @@ def test_checker_sees_implemented_test_with_xfail() -> None:
     function = _function(VALID + "def test_x():\n    assert 1 + 1 == 2\n")
     assert not _is_stub(function)
     assert _xfail_markers(function)
+
+
+STUB = "def test_x():\n    raise NotImplementedError\n"
+
+
+@pytest.mark.parametrize(
+    ("source", "problem"),
+    [
+        (
+            'xf = pytest.mark.xfail(strict=True, reason="not implemented: M1")\n'
+            "@xf\n" + STUB,
+            "module-level marker assignment",
+        ),
+        (
+            'xf = pytest.mark.xfail(strict=True, reason="not implemented: M1")\n'
+            "@xf\n" + STUB,
+            "decorator @xf",
+        ),
+        ("m = pytest.mark\n" + VALID + STUB, "module-level marker assignment"),
+        (
+            "pytestmark = pytest.mark.xfail(strict=True,"
+            ' reason="not implemented: M1")\n' + STUB,
+            "module-level pytestmark",
+        ),
+        ("from pytest import mark\n" + VALID + STUB, "import from pytest"),
+        ("@pytest.mark.parametrize('x', [1])\n" + VALID + STUB, "decorator"),
+        ("@pytest.mark.skip\n" + STUB, "decorator @pytest.mark.skip"),
+        (STUB, "a stub needs exactly"),
+        (VALID + "def test_x():\n    assert True\n", "decorator"),
+        ("class TestX:\n    pass\n", "class TestX"),
+    ],
+    ids=[
+        "alias-assignment",
+        "alias-decorator",
+        "mark-alias",
+        "pytestmark",
+        "from-pytest-import-mark",
+        "other-decorator",
+        "skip-decorator",
+        "stub-without-marker",
+        "implemented-with-marker",
+        "class",
+    ],
+)
+def test_marker_problems_found(source: str, problem: str) -> None:
+    problems = marker_problems(ast.parse("import pytest\n" + source))
+    assert any(problem in p for p in problems), problems
+
+
+def test_marker_problems_accepts_the_allowed_forms() -> None:
+    source = "import pytest\n" + VALID + STUB + "def test_y():\n    assert True\n"
+    assert marker_problems(ast.parse(source)) == []

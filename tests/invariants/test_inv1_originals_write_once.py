@@ -52,9 +52,12 @@ def test_move_between_shards_copies_and_verifies_before_git_rm() -> None:
     """Moving a confirmed document to another shard (issue date or type corrected,
     §7.2) copies into the new shard its blobs, its intake envelope, its sidecar
     and its payload file, and verifies each: blobs and envelope by hash, the
-    payload (not in git) against payload_sha256. Only then are they removed from
-    the old shard (git rm for the registry files). The move is recorded in both
-    shards.
+    payload (not in git) against payload_sha256. Only then does it remove from
+    the old shard what no remaining document there references (git rm for the
+    tracked files); shared blobs and envelopes stay. Scenario: one email whose
+    two attachments are separate documents in the same shard; moving one keeps
+    the .eml container and the envelope for the other. The move is recorded in
+    both shards.
     """
     raise NotImplementedError
 

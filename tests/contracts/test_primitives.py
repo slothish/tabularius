@@ -501,3 +501,14 @@ def test_payload_ref_accepts_true() -> None:
 def test_payload_ref_rejects(data: dict[str, Any]) -> None:
     with pytest.raises(ValidationError):
         PayloadRef.model_validate(data)
+
+
+def test_timestamp_rejects_leap_second() -> None:
+    # Matches the pattern, but datetime cannot represent second 60.
+    with pytest.raises(ValidationError):
+        TIMESTAMP.validate_python("2016-12-31T23:59:60Z")
+
+
+def test_timestamp_negative_zero_offset_written_as_z() -> None:
+    parsed = TIMESTAMP.validate_python("2026-10-02T09:12:00-00:00")
+    assert TIMESTAMP.dump_python(parsed, mode="json") == "2026-10-02T09:12:00Z"

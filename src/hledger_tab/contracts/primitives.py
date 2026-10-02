@@ -133,7 +133,10 @@ def _canonical_timestamp(value: Any) -> Any:
 
     Refused: numbers and bools, a space instead of ``T``, lowercase ``t``/``z``,
     missing seconds, an offset without colon (``+0200``) and more than six
-    fractional digits.
+    fractional digits. A leap second (``:60``) matches the pattern but is
+    rejected by parsing, because ``datetime`` cannot represent it. An offset
+    of ``-00:00`` is accepted and normalised to UTC, so it is written back
+    as ``Z``.
     """
     if isinstance(value, datetime):
         return value
