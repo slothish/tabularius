@@ -290,8 +290,10 @@ archive/
 - **Each shard has its own store.** The same blob needed by two shards (one email
   with attachments that expire in different years) is copied into both. Some
   duplication buys deletion without reference counting across shards.
-- **Moving a confirmed document** (issue date or type corrected later) is a copy
-  into the new shard plus `git rm` in the old one. The old shard's history keeps
+- **Moving a confirmed document** (issue date or type corrected later) copies
+  its blobs, intake envelope, sidecar and payload file into the new shard,
+  verifies them (the payload against `payload_sha256`), and only then removes
+  them from the old one (`git rm` for the tracked files). The old shard's history keeps
   the sidecar until that shard is deleted; the move is recorded in both.
 - No human-readable filenames inside the archive. Readable names are produced
   only on export.
@@ -666,7 +668,10 @@ machine, and where?" The answer is stored in the `shred_ok` event.
   its sidecar, and updates the index. The shard's git history keeps the
   sidecar's non-sensitive metadata until the shard itself is deleted; sensitive
   values were never in git (§7.3). Blobs still referenced by another document in
-  the same shard are kept.
+  the same shard are kept. When the deleted document was the last one from its
+  intake, the intake envelope is `git rm`'d as well and container blobs no
+  longer referenced are deleted; like the sidecar, the envelope (sender,
+  subject) stays in the shard's history until the shard is deleted.
 - **The `open` shard** never expires as a whole, so documents leaving it (moved
   to a year shard, or deleted) leave history behind. Rewriting its history with
   `git filter-repo` is the one sanctioned exception to invariant 8; it is a
