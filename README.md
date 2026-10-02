@@ -80,7 +80,8 @@ Linux only. Not final; see [DESIGN.md §14](DESIGN.md#14-tech-stack).
 - Optional: a local LLM through an OpenAI-compatible or Ollama endpoint, used
   only when cheaper methods (identifiers, templates, a local classifier) are
   uncertain
-- Recommended: ZFS with native encryption for the archive and its backups
+
+How you store, encrypt and back up the archive is up to you.
 
 ## Roadmap
 
@@ -105,4 +106,4 @@ and the import name is `hledger_tab`.
 
 ## Licence
 
-[GNU General Public License v3.0](LICENSE).
+[GNU General Public License v3.0 or later](LICENSE) (`GPL-3.0-or-later`).

@@ -662,7 +662,7 @@ Import name: `hledger_tab` (PyPI `tabularius` is taken by an unrelated package).
 7. Can the accountant/Fortnox report what has already arrived via other channels
    (for duplicate detection)?
 8. Board approval for hosting club documents.
-9. ~~Licence (EUPL-1.2 vs MIT).~~ Decided: GPL-3.0.
+9. ~~Licence (EUPL-1.2 vs MIT).~~ Decided: GPL-3.0-or-later.
 10. Phone photos and email attachments in v1, or scanner only?
 
 ---
