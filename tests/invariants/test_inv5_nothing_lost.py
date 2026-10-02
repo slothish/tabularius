@@ -50,7 +50,8 @@ def test_business_duplicate_is_flagged_not_dropped() -> None:
 
 @pytest.mark.xfail(strict=True, reason="not implemented: M1")
 def test_invalid_envelope_quarantines_bundle() -> None:
-    """A bundle whose envelope.json fails contract validation is quarantined whole,
-    payload files included, and is not deleted from the inbox until it is.
+    """A bundle whose envelope.json is missing, is not valid JSON, or fails
+    contract validation is quarantined whole, payload files included, and is not
+    removed from the inbox until it is.
     """
     raise NotImplementedError

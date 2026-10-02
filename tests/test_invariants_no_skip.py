@@ -82,7 +82,41 @@ STUB_BODY = "def test_x():\n    raise NotImplementedError\n"
         (
             "@pytest.mark.xfail(strict=True, run=False, reason='not implemented: M1')\n"
             + STUB_BODY,
-            "run=False",
+            "keywords other than strict and reason: run",
+        ),
+        (
+            "@pytest.mark.xfail(strict=True, raises=AssertionError,"
+            " reason='not implemented: M1')\n"
+            "def test_x():\n    assert 1 == 2\n",
+            "keywords other than strict and reason: raises",
+        ),
+        (
+            "@pytest.mark.xfail(strict=True, reason='not implemented: M1')\n"
+            "def test_x():\n    assert 1 == 2\n",
+            "may only fail with NotImplementedError",
+        ),
+        (
+            "pytestmark = pytest.mark.xfail(strict=True,"
+            " reason='not implemented: M1')\n"
+            "def test_x():\n    assert 1 == 2\n",
+            "may only fail with NotImplementedError",
+        ),
+        (
+            "class TestX:\n"
+            "    pytestmark = pytest.mark.xfail(strict=True,"
+            " reason='not implemented: M1')\n"
+            "    def test_x(self):\n        assert 1 == 2\n",
+            "may only fail with NotImplementedError",
+        ),
+        (
+            "@pytest.mark.xfail(strict=True, reason='not implemented: M0')\n"
+            + STUB_BODY,
+            "reason must be",
+        ),
+        (
+            "@pytest.mark.xfail(strict=True, reason='not implemented: M01')\n"
+            + STUB_BODY,
+            "reason must be",
         ),
         (
             "@pytest.mark.xfail(strict=False, reason='not implemented: M1')\n"
@@ -128,6 +162,12 @@ STUB_BODY = "def test_x():\n    raise NotImplementedError\n"
     ],
     ids=[
         "run-false",
+        "raises-keyword",
+        "implemented-under-valid-marker",
+        "module-pytestmark",
+        "class-pytestmark",
+        "milestone-zero",
+        "milestone-leading-zero",
         "strict-false-failing",
         "strict-missing",
         "strict-false-passing",

@@ -47,10 +47,14 @@ def test_confirm_copies_and_verifies_before_removing_staging() -> None:
     raise NotImplementedError
 
 
-@pytest.mark.xfail(strict=True, reason="not implemented: M2")
+@pytest.mark.xfail(strict=True, reason="not implemented: M7")
 def test_move_between_shards_copies_and_verifies_before_git_rm() -> None:
-    """Moving a confirmed document to another shard (issue date or type corrected)
-    copies and verifies it in the new shard before it is git-rm'd from the old one.
+    """Moving a confirmed document to another shard (issue date or type corrected,
+    §7.2) copies into the new shard its blobs, its intake envelope, its sidecar
+    and its payload file, and verifies each: blobs and envelope by hash, the
+    payload (not in git) against payload_sha256. Only then are they removed from
+    the old shard (git rm for the registry files). The move is recorded in both
+    shards.
     """
     raise NotImplementedError
 

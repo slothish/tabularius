@@ -16,7 +16,7 @@ import pytest
 ROOT = Path(__file__).parent.parent
 INVARIANTS = Path(__file__).parent / "invariants"
 SECTION_HEADING = "## 2. Invariants"
-XFAIL_REASON = re.compile(r"^not implemented: M\d+$")
+XFAIL_REASON = re.compile(r"^not implemented: M[1-9]\d*$")
 
 
 def _normalise(text: str) -> str:
@@ -157,6 +157,16 @@ def test_at_least_two_checks_per_invariant(number: int) -> None:
 
 
 @pytest.mark.parametrize("number", range(1, 9))
+def test_no_pytestmark_and_no_classes(number: int) -> None:
+    # Markers belong on each function, where this meta-test can see them; the
+    # conftest still checks module and class pytestmark at runtime.
+    module = _module(number)
+    names = {n.id for n in ast.walk(module) if isinstance(n, ast.Name)}
+    assert "pytestmark" not in names
+    assert not [n for n in module.body if isinstance(n, ast.ClassDef)]
+
+
+@pytest.mark.parametrize("number", range(1, 9))
 def test_stubs_are_strict_xfail_and_implemented_tests_are_not(number: int) -> None:
     for function in _tests(_module(number)):
         markers = _xfail_markers(function)
@@ -191,6 +201,8 @@ VALID = '@pytest.mark.xfail(strict=True, reason="not implemented: M3")\n'
         '@pytest.mark.xfail(True, strict=True, reason="not implemented: M3")\n',
         '@pytest.mark.xfail(strict=True, run=False, reason="not implemented: M3")\n',
         '@pytest.mark.xfail(strict=True, reason="later")\n',
+        '@pytest.mark.xfail(strict=True, reason="not implemented: M0")\n',
+        '@pytest.mark.xfail(strict=True, reason="not implemented: M01")\n',
     ],
 )
 def test_checker_rejects_other_xfail_forms(decorator: str) -> None:

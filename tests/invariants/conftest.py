@@ -10,8 +10,13 @@ Every way of not running an invariant check is turned into a failure:
 - an imperative ``pytest.xfail()``;
 - an xfail marker other than the one form allowed for unimplemented
   checks, exactly ``@pytest.mark.xfail(strict=True, reason="not implemented:
-  M<n>")`` (no condition, ``run`` not ``False``). ``strict=True`` makes the
-  test fail as soon as it passes, so the marker cannot outlive the stub.
+  M<n>")``: no condition and no other keyword (``run``, ``raises``). This
+  applies however the marker is attached (decorator, module or class
+  ``pytestmark``);
+- an xfail whose test failed with anything but ``NotImplementedError``.
+  "xfailed" therefore only ever means "still a stub": an implemented test
+  that fails is reported as failed even if a marker was left behind, and
+  ``strict=True`` turns one that passes into a failure too.
 
 Deselection (``-k``, ``-m``, ``--deselect``) is refused by the
 ``pytest_deselected`` hook in ``tests/conftest.py``.
@@ -24,7 +29,7 @@ import pytest
 
 MESSAGE = "skipping is not allowed in tests/invariants (DESIGN.md §15)"
 XFAIL_MESSAGE = "invalid xfail in tests/invariants (DESIGN.md §15)"
-XFAIL_REASON = re.compile(r"^not implemented: M\d+$")
+XFAIL_REASON = re.compile(r"^not implemented: M[1-9]\d*$")
 
 
 def _reason(longrepr: object) -> str:
@@ -47,10 +52,11 @@ def xfail_marker_problem(item: pytest.Item) -> str | None:
     marker = markers[0]
     if marker.args:
         return "conditional xfail"
+    other = sorted(set(marker.kwargs) - {"strict", "reason"})
+    if other:
+        return f"xfail keywords other than strict and reason: {', '.join(other)}"
     if marker.kwargs.get("strict") is not True:
         return "xfail without strict=True"
-    if marker.kwargs.get("run", True) is False:
-        return "xfail with run=False"
     reason = marker.kwargs.get("reason")
     if not (isinstance(reason, str) and XFAIL_REASON.fullmatch(reason)):
         return f"xfail reason must be 'not implemented: M<n>', got {reason!r}"
@@ -79,6 +85,18 @@ def pytest_runtest_makereport(
         pytest.xfail.Exception
     ):
         _fail(report, f"{XFAIL_MESSAGE}: {item.nodeid}: imperative pytest.xfail()")
+    elif (
+        report.when == "call"
+        and hasattr(report, "wasxfail")
+        and not (
+            call.excinfo is not None and call.excinfo.errisinstance(NotImplementedError)
+        )
+    ):
+        _fail(
+            report,
+            f"{XFAIL_MESSAGE}: {item.nodeid}: an xfail test may only fail with "
+            "NotImplementedError (a stub); this one is implemented and failing",
+        )
     elif report.skipped and not hasattr(report, "wasxfail"):
         _fail(report, f"{MESSAGE}: {item.nodeid}: {_reason(report.longrepr)}")
     return report
