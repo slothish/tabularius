@@ -68,6 +68,11 @@ def test_required_key_missing(data: dict[str, Any], key: str) -> None:
         ("channel", "email"),
         ("adapter", "no-version"),
         ("received_at", "2026-10-02T08:14:03"),  # naive
+        ("received_at", 0),
+        ("received_at", 1728000000),
+        ("received_at", "1728000000"),
+        ("intake_id", "0199B2C4-1A2B-7C3D-8E4F-000000000001"),  # uppercase
+        ("intake_id", "0199b2c41a2b7c3d8e4f000000000001"),  # unhyphenated
         ("intake_id", "0199b2c4-1a2b-4c3d-8e4f-000000000001"),  # UUIDv4
         ("files", []),
     ],

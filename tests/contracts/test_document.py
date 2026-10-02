@@ -52,10 +52,39 @@ def test_round_trip_is_lossless(data: dict[str, Any]) -> None:
     assert Document.model_validate_json(doc.model_dump_json()) == doc
 
 
-def test_unconfirmed_document_in_open_shard(data: dict[str, Any]) -> None:
-    data.update(status="received", issued=None, expires=None, shard="open")
+STAGING = ["received", "needs_review", "quarantined"]
+
+
+@pytest.mark.parametrize("status", STAGING)
+def test_staging_document_has_no_shard(data: dict[str, Any], status: str) -> None:
+    data.update(status=status, issued=None, expires=None, shard=None)
     data["classification"] = None
-    assert Document.model_validate(data).shard == "open"
+    assert Document.model_validate(data).shard is None
+
+
+@pytest.mark.parametrize("status", STAGING)
+def test_staging_document_may_have_provisional_expiry(
+    data: dict[str, Any], status: str
+) -> None:
+    data.update(status=status, shard=None)
+    assert Document.model_validate(data).expires == date(2036, 12, 31)
+
+
+@pytest.mark.parametrize("shard", ["2036", "open"])
+@pytest.mark.parametrize("status", STAGING)
+def test_staging_document_rejects_shard(
+    data: dict[str, Any], status: str, shard: str
+) -> None:
+    data.update(status=status, shard=shard)
+    with pytest.raises(ValidationError, match="shard must be null in staging"):
+        Document.model_validate(data)
+
+
+@pytest.mark.parametrize("status", ["confirmed", "filed"])
+def test_assigned_document_needs_shard(data: dict[str, Any], status: str) -> None:
+    data.update(status=status, shard=None)
+    with pytest.raises(ValidationError, match="shard must be set"):
+        Document.model_validate(data)
 
 
 def test_container_is_optional(data: dict[str, Any]) -> None:
@@ -157,6 +186,69 @@ def test_open_shard_iff_no_expiry(data: dict[str, Any]) -> None:
     assert Document.model_validate(data).shard == "open"
 
 
+@pytest.mark.parametrize(
+    "expires", [date(2026, 12, 31), date(2025, 12, 31)], ids=["same-year", "earlier"]
+)
+def test_expires_must_be_after_issue_year(data: dict[str, Any], expires: date) -> None:
+    data.update(expires=expires, shard=str(expires.year))
+    with pytest.raises(ValidationError, match="must be in a later year"):
+        Document.model_validate(data)
+
+
+def test_expires_next_year_is_fine(data: dict[str, Any]) -> None:
+    data.update(expires=date(2027, 12, 31), shard="2027")
+    assert Document.model_validate(data).shard == "2027"
+
+
+# --- Strict numbers and dates -------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        (("source", "original", "pages"), [True]),
+        (("source", "original", "pages"), ["2"]),
+        (("source", "original", "pages"), [2.0]),
+        (("source", "original", "dpi"), True),
+        (("source", "original", "dpi"), "300"),
+        (("source", "original", "dpi"), 300.0),
+        (("classification", "confidence"), True),
+        (("classification", "confidence"), "0.5"),
+        (("issued",), 1728000000),
+        (("issued",), "1728000000"),
+        (("issued",), 1728000000.0),
+        (("issued",), True),
+        (("expires",), 2085000000),
+        (("hold",), {"reason": "audit", "since": 1900000000, "by": "andreas"}),
+    ],
+)
+def test_lax_numbers_and_dates_rejected(
+    data: dict[str, Any], path: tuple[str, ...], value: object
+) -> None:
+    target = data
+    for part in path[:-1]:
+        target = target[part]
+    target[path[-1]] = value
+    with pytest.raises(ValidationError):
+        Document.model_validate(data)
+
+
+def test_dates_accept_iso_strings(data: dict[str, Any]) -> None:
+    data.update(issued="2026-09-28", expires="2036-12-31")
+    data["hold"] = {"reason": "audit", "since": "2031-03-01", "by": "andreas"}
+    doc = Document.model_validate(data)
+    assert doc.issued == date(2026, 9, 28)
+    assert doc.hold is not None
+    assert doc.hold.since == date(2031, 3, 1)
+
+
+def test_classification_confidence_accepts_int(data: dict[str, Any]) -> None:
+    data["classification"]["confidence"] = 1
+    doc = Document.model_validate(data)
+    assert doc.classification is not None
+    assert doc.classification.confidence == 1.0
+
+
 @pytest.mark.parametrize("status", ["confirmed", "filed"])
 def test_issued_required_from_confirm_on(data: dict[str, Any], status: str) -> None:
     data.update(status=status, issued=None)
@@ -164,11 +256,11 @@ def test_issued_required_from_confirm_on(data: dict[str, Any], status: str) -> N
         Document.model_validate(data)
 
 
-@pytest.mark.parametrize("status", ["received", "needs_review", "quarantined"])
+@pytest.mark.parametrize("status", STAGING)
 def test_issued_may_be_unknown_before_confirm(
     data: dict[str, Any], status: str
 ) -> None:
-    data.update(status=status, issued=None)
+    data.update(status=status, issued=None, shard=None)
     assert Document.model_validate(data).issued is None
 
 

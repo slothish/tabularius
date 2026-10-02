@@ -10,7 +10,6 @@ from typing import Annotated, Literal, Self
 
 from pydantic import (
     AfterValidator,
-    AwareDatetime,
     Field,
     StringConstraints,
     model_validator,
@@ -20,6 +19,7 @@ from hledger_tab.contracts.primitives import (
     ContractModel,
     NonEmptyStr,
     Sha256,
+    Timestamp,
     UUIDv7,
 )
 
@@ -87,7 +87,7 @@ class Envelope(ContractModel):
     schema_: Literal["envelope/1"] = Field(alias="schema")
     channel: Channel
     adapter: AdapterId
-    received_at: AwareDatetime
+    received_at: Timestamp
     source_ref: dict[NonEmptyStr, str]
     from_: str | None = Field(default=None, alias="from")
     subject: str | None = None

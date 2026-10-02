@@ -8,7 +8,7 @@ sidecar is the audit log (§7.3).
 
 from typing import Annotated, Literal, Self
 
-from pydantic import AwareDatetime, Field, model_validator
+from pydantic import Field, model_validator
 
 from hledger_tab.contracts.envelope import Channel
 from hledger_tab.contracts.primitives import (
@@ -17,12 +17,13 @@ from hledger_tab.contracts.primitives import (
     NonEmptyStr,
     Sha256,
     ShardName,
+    Timestamp,
     TxnCode,
 )
 
 
 class _EventBase(ContractModel):
-    at: AwareDatetime
+    at: Timestamp
 
 
 class ReceivedEvent(_EventBase):

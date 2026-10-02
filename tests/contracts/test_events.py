@@ -45,6 +45,13 @@ def test_naive_at_rejected(type_: str) -> None:
         EVENT.validate_python(event(type_, at="2026-10-02T09:12:00"))
 
 
+@pytest.mark.parametrize("at", [0, 1728000000, 1728000000.5, True, "0"])
+@pytest.mark.parametrize("type_", list(EXAMPLES))
+def test_numeric_at_rejected(type_: str, at: object) -> None:
+    with pytest.raises(ValidationError):
+        EVENT.validate_python(event(type_, at=at))
+
+
 @pytest.mark.parametrize("type_", list(EXAMPLES))
 def test_at_required(type_: str) -> None:
     data = event(type_)

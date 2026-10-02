@@ -10,19 +10,21 @@ value may be ``null`` (``classification``, ``issued``, ``expires``,
 ``null`` is not. Only ``container`` is optional, as in the example.
 """
 
-from datetime import date
 from enum import StrEnum
 from typing import Literal, Self
 
-from pydantic import Field, PositiveInt, StrictBool, model_validator
+from pydantic import Field, StrictBool, model_validator
 
 from hledger_tab.contracts.events import Event
 from hledger_tab.contracts.field import FieldRecord, is_sensitive
 from hledger_tab.contracts.primitives import (
     Actor,
+    Confidence,
     ContractModel,
+    IsoDate,
     NonEmptyStr,
     PayloadRef,
+    PositiveStrictInt,
     ProfileRef,
     Sha256,
     ShardName,
@@ -68,11 +70,11 @@ class OriginalSource(ContractModel):
 
     sha256: Sha256
     mime: MimeType
-    pages: list[PositiveInt] = Field(min_length=1)
+    pages: list[PositiveStrictInt] = Field(min_length=1)
     claimed: NonEmptyStr | None = None
     verapdf: VeraPdfResult | None = None
     born_digital: StrictBool | None = None
-    dpi: PositiveInt | None = None
+    dpi: PositiveStrictInt | None = None
 
     @model_validator(mode="after")
     def _pages_unique(self) -> Self:
@@ -122,7 +124,7 @@ class Classification(ContractModel):
     type: ProfileRef
     template: ProfileRef | None = None
     method: ClassificationMethod
-    confidence: float = Field(ge=0.0, le=1.0)
+    confidence: Confidence
 
 
 # --- Status, hold, links -----------------------------------------------------
@@ -138,18 +140,19 @@ class Status(StrEnum):
     QUARANTINED = "quarantined"
 
 
-STATUSES_REQUIRING_ISSUED: frozenset[Status] = frozenset(
-    {Status.CONFIRMED, Status.FILED}
-)
-"""The issue date is confirmed in review, so expiry is final at confirm
-(§12.3): from ``confirmed`` on, ``issued`` must be known."""
+ASSIGNED_STATUSES: frozenset[Status] = frozenset({Status.CONFIRMED, Status.FILED})
+"""Statuses of a document that has been assigned to a shard.
+
+Assignment happens at confirm (§7.2): the issue date is confirmed in review,
+so expiry, and with it the shard, is final (§12.3). Before that the
+document lives in ``staging/`` and has no shard."""
 
 
 class Hold(ContractModel):
     """A legal hold (§12.4): blocks deletion of the document's shard."""
 
     reason: NonEmptyStr
-    since: date
+    since: IsoDate
     by: Actor
 
 
@@ -169,9 +172,14 @@ class Document(ContractModel):
 
     - ``expires``, if set, is a 31 December (§8.1: expiry is always the end
       of a calendar year).
-    - ``shard`` is the year of ``expires``, or ``"open"`` iff ``expires`` is
-      null (§7.2, §12.3).
-    - ``issued`` is set once the document is confirmed or filed (§12.3).
+    - ``expires``, if set together with ``issued``, is in a later year
+      (retention is at least one year, §8.1).
+    - Shard assignment (§7.2): a confirmed or filed document has ``issued``
+      and ``shard`` set; a document in staging (received, needs_review,
+      quarantined) has ``shard: null``. ``expires`` may already be filled
+      provisionally in staging.
+    - A set ``shard`` is the year of ``expires``, or ``"open"`` iff
+      ``expires`` is null (§7.2, §12.3).
     - Field keys are unique.
     - Built-in sensitive values (``identifier`` of kind ``personnummer``)
       are never stored inline: their value is ``{payload: true}`` or null
@@ -188,9 +196,9 @@ class Document(ContractModel):
     classification: Classification | None
     fields: list[FieldRecord]
     status: Status
-    issued: date | None
-    expires: date | None
-    shard: ShardName
+    issued: IsoDate | None
+    expires: IsoDate | None
+    shard: ShardName | None
     hold: Hold | None
     payload_sha256: Sha256 | None
     events: list[Event]
@@ -203,19 +211,42 @@ class Document(ContractModel):
         return self
 
     @model_validator(mode="after")
+    def _expires_after_issue_year(self) -> Self:
+        if (
+            self.issued is not None
+            and self.expires is not None
+            and self.expires.year <= self.issued.year
+        ):
+            raise ValueError(
+                f"expires {self.expires} must be in a later year than "
+                f"issued {self.issued}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _shard_set_iff_assigned(self) -> Self:
+        if self.status in ASSIGNED_STATUSES:
+            if self.issued is None:
+                raise ValueError(f"issued must be set when status is {self.status}")
+            if self.shard is None:
+                raise ValueError(f"shard must be set when status is {self.status}")
+        elif self.shard is not None:
+            raise ValueError(
+                f"shard must be null in staging (status {self.status}), "
+                f"got {self.shard!r}"
+            )
+        return self
+
+    @model_validator(mode="after")
     def _shard_matches_expires(self) -> Self:
+        if self.shard is None:
+            return self
         expected = shard_for(self.expires)
         if self.shard != expected:
             raise ValueError(
                 f"shard {self.shard!r} does not match expires {self.expires}; "
                 f"expected {expected!r}"
             )
-        return self
-
-    @model_validator(mode="after")
-    def _issued_known_when_confirmed(self) -> Self:
-        if self.status in STATUSES_REQUIRING_ISSUED and self.issued is None:
-            raise ValueError(f"issued must be set when status is {self.status}")
         return self
 
     @model_validator(mode="after")

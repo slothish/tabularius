@@ -11,13 +11,19 @@ import re
 from enum import StrEnum
 from typing import Literal, Self
 
-from pydantic import Field, PositiveInt, StrictBool, field_validator, model_validator
+from pydantic import Field, StrictBool, field_validator, model_validator
 
-from hledger_tab.contracts.field import FieldType, IdentifierKind, Party
+from hledger_tab.contracts.field import (
+    SENSITIVE_IDENTIFIER_KINDS,
+    FieldType,
+    IdentifierKind,
+    Party,
+)
 from hledger_tab.contracts.primitives import (
     ContractModel,
     FieldKey,
     NonEmptyStr,
+    PositiveStrictInt,
     ProfileId,
     ProfileRef,
     Retention,
@@ -106,12 +112,13 @@ class TypeProfile(ContractModel):
     ``retention``: ``P<n>Y`` or ``open`` (§8.1, §12.3).
 
     Checks: exactly one field has ``role: issued``, and it is of type
-    ``date``; every uniqueness path refers to a defined field.
+    ``date``; uniqueness paths do not repeat and each refers to a defined
+    field.
     """
 
     schema_: Literal["type/1"] = Field(alias="schema")
     id: ProfileId
-    version: PositiveInt
+    version: PositiveStrictInt
     description: NonEmptyStr
     fields: dict[FieldKey, FieldDefinition] = Field(min_length=1)
     uniqueness: list[NonEmptyStr] = Field(default_factory=list[str])
@@ -136,6 +143,8 @@ class TypeProfile(ContractModel):
 
     @model_validator(mode="after")
     def _uniqueness_paths_exist(self) -> Self:
+        if len(set(self.uniqueness)) != len(self.uniqueness):
+            raise ValueError("uniqueness paths must not repeat")
         for path in self.uniqueness:
             key, _, attribute = path.partition(".")
             definition = self.fields.get(key)
@@ -180,12 +189,30 @@ class TemplateMatch(ContractModel):
     ``{orgnr: "556000-0000"}``. ``keywords_all``: strings that must all
     occur in the text. At least one criterion is required, so that a
     template never matches every document.
+
+    Sensitive identifier kinds (``personnummer``) are not allowed in
+    ``identifiers``: a template would otherwise hold a person's identity
+    number, and templates contain anchors, not values (§7.6).
     """
 
     identifiers: dict[IdentifierKind, NonEmptyStr] = Field(
         default_factory=dict[IdentifierKind, str]
     )
     keywords_all: list[NonEmptyStr] = Field(default_factory=list[str])
+
+    @field_validator("identifiers")
+    @classmethod
+    def _no_sensitive_identifiers(
+        cls, identifiers: dict[IdentifierKind, str]
+    ) -> dict[IdentifierKind, str]:
+        sensitive = sorted(
+            k.value for k in identifiers if k in SENSITIVE_IDENTIFIER_KINDS
+        )
+        if sensitive:
+            raise ValueError(
+                f"a template must not match on sensitive identifiers: {sensitive}"
+            )
+        return identifiers
 
     @model_validator(mode="after")
     def _has_a_criterion(self) -> Self:
@@ -227,7 +254,7 @@ class Template(ContractModel):
 
     schema_: Literal["template/1"] = Field(alias="schema")
     id: ProfileId
-    version: PositiveInt
+    version: PositiveStrictInt
     type: ProfileRef
     status: TemplateStatus
     match: TemplateMatch

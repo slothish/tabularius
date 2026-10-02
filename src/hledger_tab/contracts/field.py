@@ -14,26 +14,22 @@ A record's ``value`` is one of:
 """
 
 from collections.abc import Set
-from datetime import date
 from enum import StrEnum
 from typing import Annotated, Final, Literal, Self
 
-from pydantic import (
-    Field,
-    JsonValue,
-    NonNegativeInt,
-    PositiveInt,
-    StrictBool,
-    model_validator,
-)
+from pydantic import Field, JsonValue, StrictBool, model_validator
 
 from hledger_tab.contracts.primitives import (
+    Confidence,
     ContractModel,
     DecimalValue,
     FieldKey,
+    IsoDate,
     Money,
     NonEmptyStr,
+    NonNegativeStrictInt,
     PayloadRef,
+    PositiveStrictInt,
 )
 
 # --- Vocabulary -------------------------------------------------------------
@@ -101,9 +97,15 @@ class SourceLocation(ContractModel):
     Both are absent for values that do not come from a page (e.g. manual).
     """
 
-    page: PositiveInt | None = None
+    page: PositiveStrictInt | None = None
     bbox: (
-        tuple[NonNegativeInt, NonNegativeInt, NonNegativeInt, NonNegativeInt] | None
+        tuple[
+            NonNegativeStrictInt,
+            NonNegativeStrictInt,
+            NonNegativeStrictInt,
+            NonNegativeStrictInt,
+        ]
+        | None
     ) = None
     method: ExtractionMethod
 
@@ -121,9 +123,6 @@ class ValidationResult(ContractModel):
 
     ok: StrictBool
     message: str | None = None
-
-
-type Confidence = Annotated[float, Field(ge=0.0, le=1.0)]
 
 
 class _FieldRecordBase(ContractModel):
@@ -203,7 +202,7 @@ class DateField(_FieldRecordBase):
     """``date``: an ISO date."""
 
     type: Literal["date"]
-    value: Annotated[PayloadRef | date | None, Field(union_mode="left_to_right")]
+    value: Annotated[PayloadRef | IsoDate | None, Field(union_mode="left_to_right")]
 
 
 class EnumField(_FieldRecordBase):

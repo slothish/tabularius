@@ -141,6 +141,21 @@ def test_options_only_on_enum(type_data: dict[str, Any]) -> None:
         TypeProfile.model_validate(type_data)
 
 
+def test_duplicate_uniqueness_paths_rejected(type_data: dict[str, Any]) -> None:
+    type_data["uniqueness"] = ["invoice_no", "correspondent.orgnr", "invoice_no"]
+    with pytest.raises(ValidationError, match="uniqueness paths must not repeat"):
+        TypeProfile.model_validate(type_data)
+
+
+@pytest.mark.parametrize("version", [True, "2", 2.0, 0])
+def test_type_version_must_be_strict_positive_int(
+    type_data: dict[str, Any], version: object
+) -> None:
+    type_data["version"] = version
+    with pytest.raises(ValidationError):
+        TypeProfile.model_validate(type_data)
+
+
 @pytest.mark.parametrize(
     ("path", "message"),
     [
@@ -233,6 +248,23 @@ def test_bad_template_status(template_data: dict[str, Any], status: str) -> None
 def test_template_match_needs_a_criterion(template_data: dict[str, Any]) -> None:
     template_data["match"] = {}
     with pytest.raises(ValidationError, match="at least one identifier or keyword"):
+        Template.model_validate(template_data)
+
+
+@pytest.mark.parametrize("version", [True, "3", 3.0])
+def test_template_version_must_be_strict_int(
+    template_data: dict[str, Any], version: object
+) -> None:
+    template_data["version"] = version
+    with pytest.raises(ValidationError):
+        Template.model_validate(template_data)
+
+
+def test_template_must_not_match_on_personnummer(
+    template_data: dict[str, Any],
+) -> None:
+    template_data["match"]["identifiers"]["personnummer"] = "19121212-1212"
+    with pytest.raises(ValidationError, match="must not match on sensitive"):
         Template.model_validate(template_data)
 
 

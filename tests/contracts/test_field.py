@@ -137,6 +137,35 @@ def test_unknown_with_non_boolean_payload_is_raw_json() -> None:
     assert parsed.value == {"payload": 1}
 
 
+@pytest.mark.parametrize("confidence", [True, "0.5"])
+def test_confidence_must_be_a_number(confidence: object) -> None:
+    with pytest.raises(ValidationError):
+        RECORD.validate_python(record("text", confidence=confidence))
+
+
+def test_confidence_accepts_int() -> None:
+    assert RECORD.validate_python(record("text", confidence=1)).confidence == 1.0
+
+
+@pytest.mark.parametrize("page", [True, "2", 2.0])
+def test_page_must_be_strict_int(page: object) -> None:
+    with pytest.raises(ValidationError):
+        RECORD.validate_python(record("text", source={"page": page, "method": "llm"}))
+
+
+@pytest.mark.parametrize("cell", [True, "2", 2.0])
+def test_bbox_must_be_strict_ints(cell: object) -> None:
+    source = {"page": 1, "bbox": [0, 0, cell, 5], "method": "llm"}
+    with pytest.raises(ValidationError):
+        RECORD.validate_python(record("text", source=source))
+
+
+@pytest.mark.parametrize("value", [1728000000, "1728000000", True])
+def test_date_value_rejects_numbers(value: object) -> None:
+    with pytest.raises(ValidationError):
+        RECORD.validate_python(record("date", value=value))
+
+
 @pytest.mark.parametrize("confidence", [-0.01, 1.01])
 def test_confidence_out_of_range(confidence: float) -> None:
     with pytest.raises(ValidationError):

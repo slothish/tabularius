@@ -2,8 +2,12 @@
 """Primitive types: hashes, UUIDv7, money, retention, payload references."""
 
 import inspect
+import json
+import re
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
+from uuid import UUID
 
 import pytest
 from pydantic import BaseModel, TypeAdapter, ValidationError
@@ -15,12 +19,20 @@ import hledger_tab.contracts.field
 import hledger_tab.contracts.primitives
 import hledger_tab.contracts.profile
 from hledger_tab.contracts.primitives import (
+    DECIMAL_PATTERN,
+    UUID7_PATTERN,
+    Confidence,
     ContractModel,
+    DecimalValue,
+    IsoDate,
     Money,
+    NonNegativeStrictInt,
     PayloadRef,
+    PositiveStrictInt,
     Retention,
     Sha256,
     ShardName,
+    Timestamp,
     UUIDv7,
 )
 
@@ -84,11 +96,34 @@ def test_uuidv7_accepts_version_7() -> None:
         "0199a1c2-7b3e-4f10-9c41-2d8e5a6b0f11",  # version 4
         "0199a1c2-7b3e-7f10-0c41-2d8e5a6b0f11",  # not the RFC variant
         "not-a-uuid",
+        "0199A1C2-7B3E-7F10-9C41-2D8E5A6B0F11",  # uppercase
+        "{0199a1c2-7b3e-7f10-9c41-2d8e5a6b0f11}",  # braces
+        "urn:uuid:0199a1c2-7b3e-7f10-9c41-2d8e5a6b0f11",  # URN
+        "0199a1c27b3e7f109c412d8e5a6b0f11",  # unhyphenated
+        " 0199a1c2-7b3e-7f10-9c41-2d8e5a6b0f11",  # leading space
     ],
 )
 def test_uuidv7_rejects(value: str) -> None:
     with pytest.raises(ValidationError):
         UUID7.validate_python(value)
+    with pytest.raises(ValidationError):
+        UUID7.validate_json(json.dumps(value))
+
+
+def test_uuidv7_rejects_bytes_and_ints() -> None:
+    uuid = UUID("0199a1c2-7b3e-7f10-9c41-2d8e5a6b0f11")
+    for value in (uuid.bytes, uuid.int):
+        with pytest.raises(ValidationError):
+            UUID7.validate_python(value)
+
+
+def test_uuidv7_accepts_uuid_object() -> None:
+    uuid = UUID("0199a1c2-7b3e-7f10-9c41-2d8e5a6b0f11")
+    assert UUID7.validate_python(uuid) == uuid
+
+
+def test_uuidv7_schema_pattern() -> None:
+    assert UUID7.json_schema()["pattern"] == UUID7_PATTERN
 
 
 # --- Money ------------------------------------------------------------------
@@ -110,6 +145,69 @@ def test_money_amount_is_decimal(amount: object, expected: Decimal) -> None:
 
 def test_money_keeps_trailing_zeros() -> None:
     assert str(Money(amount=Decimal("449.00"), currency="SEK").amount) == "449.00"
+
+
+@pytest.mark.parametrize(
+    "amount", ["1e3", " 1.5 ", "1_000", "01.5", "1.", ".5", "+1", "--1", "1,5", ""]
+)
+def test_money_rejects_loose_decimal_strings(amount: str) -> None:
+    with pytest.raises(ValidationError):
+        Money.model_validate({"amount": amount, "currency": "SEK"})
+
+
+DECIMAL = TypeAdapter[Decimal](DecimalValue)
+DECIMAL_SAMPLES: list[object] = [
+    0, 7, -12, 10**30, True, False, 1.5, 2.0,
+    "0", "-0", "449.00", "-1.5", "12500", "0.001",
+    "1e3", " 1.5", "1.5 ", "1_000", "01", "00.5", "1.", ".5", "+1", "-", "",
+    "NaN", "Infinity", "1,5", None, [], {},
+]  # fmt: skip
+
+
+def _schema_accepts(schema: dict[str, Any], value: object) -> bool:
+    """Evaluate the published ``anyOf`` of integer / patterned string."""
+    for option in schema["anyOf"]:
+        if option["type"] == "integer" and type(value) is int:
+            return True
+        if (
+            option["type"] == "string"
+            and isinstance(value, str)
+            and re.search(option["pattern"], value)
+        ):
+            return True
+    return False
+
+
+def test_decimal_schema_is_integer_or_patterned_string() -> None:
+    assert DECIMAL.json_schema() == {
+        "anyOf": [
+            {"type": "integer"},
+            {"type": "string", "pattern": DECIMAL_PATTERN},
+        ]
+    }
+
+
+@pytest.mark.parametrize("value", DECIMAL_SAMPLES, ids=repr)
+def test_decimal_schema_and_validator_agree(value: object) -> None:
+    try:
+        DECIMAL.validate_python(value)
+    except ValidationError:
+        accepted = False
+    else:
+        accepted = True
+    assert accepted == _schema_accepts(DECIMAL.json_schema(), value)
+
+
+@pytest.mark.parametrize("value", DECIMAL_SAMPLES, ids=repr)
+def test_decimal_json_input_agrees_with_schema(value: object) -> None:
+    text = json.dumps(value)
+    try:
+        DECIMAL.validate_json(text)
+    except ValidationError:
+        accepted = False
+    else:
+        accepted = True
+    assert accepted == _schema_accepts(DECIMAL.json_schema(), json.loads(text))
 
 
 def test_money_rejects_python_float() -> None:
@@ -138,6 +236,95 @@ def test_money_rejects_bad_currency(currency: str) -> None:
 def test_money_dumps_amount_as_string_in_json() -> None:
     money = Money(amount=Decimal("12500.00"), currency="SEK")
     assert money.model_dump(mode="json") == {"amount": "12500.00", "currency": "SEK"}
+
+
+# --- Strict numbers, dates and timestamps -----------------------------------
+
+POSITIVE = TypeAdapter[int](PositiveStrictInt)
+NON_NEGATIVE = TypeAdapter[int](NonNegativeStrictInt)
+CONFIDENCE = TypeAdapter[float](Confidence)
+ISO_DATE = TypeAdapter[date](IsoDate)
+TIMESTAMP = TypeAdapter[datetime](Timestamp)
+
+
+@pytest.mark.parametrize("value", [True, "2", 2.0, 0, -1, None])
+def test_positive_strict_int_rejects(value: object) -> None:
+    with pytest.raises(ValidationError):
+        POSITIVE.validate_python(value)
+
+
+@pytest.mark.parametrize("text", ["true", '"2"', "2.0", "0"])
+def test_positive_strict_int_rejects_json(text: str) -> None:
+    with pytest.raises(ValidationError):
+        POSITIVE.validate_json(text)
+
+
+def test_strict_ints_accept_ints() -> None:
+    assert POSITIVE.validate_python(2) == 2
+    assert POSITIVE.validate_json("2") == 2
+    assert NON_NEGATIVE.validate_python(0) == 0
+
+
+@pytest.mark.parametrize("value", [False, "0", -1, 2.0])
+def test_non_negative_strict_int_rejects(value: object) -> None:
+    with pytest.raises(ValidationError):
+        NON_NEGATIVE.validate_python(value)
+
+
+@pytest.mark.parametrize("value", [0.0, 0.5, 1.0, 0, 1])
+def test_confidence_accepts(value: float) -> None:
+    assert CONFIDENCE.validate_python(value) == value
+
+
+@pytest.mark.parametrize("value", [True, False, "0.5", -0.1, 1.1, 2])
+def test_confidence_rejects(value: object) -> None:
+    with pytest.raises(ValidationError):
+        CONFIDENCE.validate_python(value)
+
+
+def test_confidence_rejects_json_bool_and_string() -> None:
+    for text in ("true", '"0.5"'):
+        with pytest.raises(ValidationError):
+            CONFIDENCE.validate_json(text)
+
+
+def test_iso_date_accepts_strings_and_dates() -> None:
+    assert ISO_DATE.validate_python("2026-09-28") == date(2026, 9, 28)
+    assert ISO_DATE.validate_python(date(2026, 9, 28)) == date(2026, 9, 28)
+    assert ISO_DATE.validate_json('"2026-09-28"') == date(2026, 9, 28)
+
+
+@pytest.mark.parametrize(
+    "value", [1728000000, 1728000000.0, True, 0, "1728000000", "0", "28/09/2026"]
+)
+def test_iso_date_rejects_numbers_and_timestamps(value: object) -> None:
+    with pytest.raises(ValidationError):
+        ISO_DATE.validate_python(value)
+
+
+def test_iso_date_rejects_json_number() -> None:
+    with pytest.raises(ValidationError):
+        ISO_DATE.validate_json("1728000000")
+
+
+def test_timestamp_accepts_iso_strings_and_datetimes() -> None:
+    expected = datetime(2026, 10, 2, 9, 12, tzinfo=UTC)
+    assert TIMESTAMP.validate_python("2026-10-02T09:12:00Z") == expected
+    assert TIMESTAMP.validate_python(expected) == expected
+    assert TIMESTAMP.validate_json('"2026-10-02T09:12:00Z"') == expected
+
+
+@pytest.mark.parametrize(
+    "value", [0, 1728000000, 1728000000.5, True, "0", "1728000000", "2026-10-02T09:12"]
+)
+def test_timestamp_rejects_numbers_and_naive(value: object) -> None:
+    with pytest.raises(ValidationError):
+        TIMESTAMP.validate_python(value)
+
+
+def test_timestamp_rejects_json_number() -> None:
+    with pytest.raises(ValidationError):
+        TIMESTAMP.validate_json("0")
 
 
 # --- Retention --------------------------------------------------------------
