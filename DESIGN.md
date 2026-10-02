@@ -119,6 +119,7 @@ in one archive. That is parked; see §11.
 | Scanner | ADS-1800W scan profile → SFTP (preferred) or SMB, chrooted account, write-only to `inbox/scanner/` |
 | Mail | Intake folder (e.g. Fastmail: Sieve rules + manual move/forward) → mbsync → Maildir |
 | Agent / manual | writes a bundle directly |
+| Other channels | Anything that delivers a conforming bundle (§5.4), e.g. Kivra |
 
 Notes:
 - The scanner is an untrusted device. Its credential can only write to its inbox
@@ -144,26 +145,77 @@ inbox/ready/<intake_id>/
 {
   "intake_id": "0199b2c4-…",
   "schema": "envelope/1",
-  "channel": "scanner | maildir | agent | manual",
-  "adapter": "scanner-sftp@0.1.0",
+  "channel": "maildir",
+  "channel_id": "<abc@example.se>",
+  "adapter": "maildir@0.1.0",
   "received_at": "2026-10-02T08:14:03Z",
-  "source_ref": {"message_id": "<abc@example.se>", "mailbox": "Intake", "scan_profile": "default"},
+  "source_ref": {"mailbox": "Intake"},
   "from": "faktura@example.se",
   "subject": "Din faktura",
+  "hints": [],
   "files": [{"name": "original.eml", "sha256": "…", "role": "container"}]
 }
 ```
 
-The envelope is stored verbatim in `registry/intake/YYYY/<intake_id>.json` and is
-never edited afterwards.
+- `channel`: a name matching `^[a-z][a-z0-9-]*$`. `scanner`, `maildir`,
+  `agent` and `manual` are built in; any other name must be declared in the
+  configuration before its bundles are accepted (an undeclared channel's bundle
+  is quarantined, not dropped).
+- `channel_id`: the channel's own stable id for the item (Message-ID for mail,
+  Kivra's content key, …), or null when the channel has none (scanner). It is
+  the deduplication key per channel (§5.3).
+- `source_ref`: further channel-specific references, kept verbatim.
+- `hints`: values the channel already knows in structured form (§5.4).
+
+The envelope is stored verbatim with the document (in staging, then in the
+shard's `registry/intake/<intake_id>.json`, §7.2) and is never edited
+afterwards.
 
 ### 5.3 Deduplication
 
 - Blob level: sha256 (automatic, store is content-addressed).
-- Email level: `Message-ID`.
+- Channel level: `(channel, channel_id)`. Re-delivering an item is harmless, so
+  a channel does not need perfect bookkeeping of what it has already sent.
+  (For mail, `channel_id` is the `Message-ID`.)
 - Business level: per profile uniqueness key, e.g. `(correspondent orgnr, invoice_no)`.
   A duplicate is flagged in review ("already received 2026-09-14"), never
-  silently dropped.
+  silently dropped. This also catches the same invoice arriving through two
+  channels (Kivra and email, say).
+
+### 5.4 External channels
+
+Tabularius owns the envelope and publishes it: `hledger-tab schema envelope`
+prints its JSON Schema, versioned (`envelope/1`). A channel conforms either
+natively or through a small bridge written for it. Tabularius ships adapters
+only for its own channels (scanner, maildir, manual); it does **not** maintain a
+generic broker or a connector SDK. Further channels are added ad hoc, but all
+look the same:
+
+- **Delivery**: write `envelope.json` and the files to `inbox/tmp/<intake_id>/`,
+  then `rename()` to `inbox/ready/`. Nothing else is an interface.
+- **Identity**: set `channel_id` to the channel's stable id, never to a
+  position in a list that shifts when new items arrive.
+- **Hints**: structured values the channel provides, in the field vocabulary
+  (§8.5): `{"key": "amount_due", "type": "money", "value": {"amount": "449.00",
+  "currency": "SEK"}}`. They become field candidates with `source.method:
+  channel`, are cross-checked against the document's own text (a mismatch is a
+  review flag), and are still reviewed. Hints are stored verbatim in git with
+  the envelope, so the contract rejects hints of sensitive kinds (§7.6).
+- **Credentials**: a channel that holds a login (a mailbox password, a BankID
+  session) runs as its own user, can only write to the inbox, and never shares
+  credentials with the core or the agent (§13).
+
+**First candidate: Kivra**, through [kivinge](https://github.com/dvaergiller/kivinge)
+(unofficial client, GPL-3.0-only; Tabularius runs it as a separate program, it
+does not link it). A small bridge calls kivinge and writes bundles. What the
+bridge needs from kivinge is a machine-readable listing (`--json`, planned
+upstream) with per item: the stable content `key`, `sender_name` and sender
+key, `subject`, `created_at`, `type`, `payable`, `amount`, `currency`,
+`due_date`, and the attachments with names, so they can be downloaded by key.
+Kivra's amount and due date become hints. kivinge's BankID session on disk
+gives access to all Kivra mail: the bridge runs as its own user. Whether
+unofficial API access is acceptable under Kivra's terms is for the operator to
+judge.
 
 ---
 
@@ -798,6 +850,9 @@ tank/archive            encryption=on, compression=zstd, dedup=off
 - Scanner: untrusted; write-only inbox account; SFTP chroot (key auth if supported).
 - Mail ingestion: dedicated credentials scoped to intake folders; the password in
   secrets management, not in plain config.
+- External channels (§5.4): each runs as its own user with write-only access to
+  the inbox; its credentials (e.g. a BankID session) are never readable by the
+  core or the agent.
 - Core runs as its own user with systemd hardening.
 - Converters/parsers sandboxed: no network, minimal filesystem.
 - Agent: read-only API token. It can read personal data; who gets it is the
@@ -894,7 +949,9 @@ Scanner SFTP adapter → bundle → analyse → write-once staging store → ocr
 PDF/A-2b → staging sidecar → SQLite index. Invariant tests green. The YAML
 loader rejects duplicate keys and YAML 1.1 booleans (`yes`, `on`), which
 PyYAML would otherwise accept silently, and keeps dates and timestamps as
-strings so the contracts' canonical spellings are enforced.
+strings so the contracts' canonical spellings are enforced. The envelope
+contract gets the §5.2/§5.4 shape (open channel names, `channel_id`, `hints`,
+field source method `channel`); the M0 contract still has the closed set.
 
 **M2 — Review TUI v0**
 Queue, page image (Sixel spike / imv fallback), generic fields, confirm (moves
