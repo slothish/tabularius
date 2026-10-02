@@ -66,13 +66,16 @@ def shard_for(expires: date | None) -> str:
     """The shard a document with this expiry belongs to: its expiry year,
     e.g. ``"2036"``, or ``"open"`` for no expiry (§7.2, §12.3).
 
-    Raises ``ValueError`` if ``expires`` is not a 31 December.
+    Raises ``ValueError`` if ``expires`` is not a 31 December, or is before
+    the year 1000 (shard names have exactly four digits, ``SHARD_PATTERN``).
     """
     if expires is None:
         return OPEN
     if not is_end_of_year(expires):
         raise ValueError(f"expiry must be a 31 December, got {expires}")
-    return f"{expires.year:04d}"
+    if expires.year < 1000:
+        raise ValueError(f"expiry year must have four digits, got {expires.year}")
+    return str(expires.year)
 
 
 def deletable_from(shard: str) -> date | None:

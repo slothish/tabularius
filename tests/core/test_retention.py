@@ -4,7 +4,7 @@
 from datetime import date, timedelta
 
 import pytest
-from hypothesis import given
+from hypothesis import example, given
 from hypothesis import strategies as st
 from pydantic import TypeAdapter, ValidationError
 
@@ -87,6 +87,16 @@ def test_shard_for_requires_31_december(day: date) -> None:
 # --- deletable_from ---------------------------------------------------------
 
 
+@pytest.mark.parametrize("day", [date(999, 12, 31), date(1, 12, 31)])
+def test_shard_for_requires_four_digit_year(day: date) -> None:
+    with pytest.raises(ValueError, match="four digits"):
+        shard_for(day)
+
+
+def test_shard_for_first_four_digit_year() -> None:
+    assert shard_for(date(1000, 12, 31)) == "1000"
+
+
 def test_deletable_from() -> None:
     assert deletable_from("2036") == date(2037, 1, 1)
     assert deletable_from("open") is None
@@ -143,6 +153,16 @@ RETENTION = TypeAdapter[str](Retention)
 SHARD = TypeAdapter[str](ShardName)
 
 
+LAST_SHARD = "9999"
+"""Well-formed, but its deletion date (10000-01-01) is not a ``date``."""
+
+
+# Near misses, pinned so that every run tries them.
+@example("9999")
+@example("2036\n")
+@example("P10Y\n")
+@example("P01Y")
+@example("0999")
 @given(st.one_of(retention_strings, st.just("open"), st.text(max_size=8)))
 def test_property_contract_and_retention_agree(text: str) -> None:
     try:
@@ -160,8 +180,14 @@ def test_property_contract_and_retention_agree(text: str) -> None:
     assert contract_ok == function_ok
 
 
+# Near misses, pinned so that every run tries them.
+@example("9999")
+@example("2036\n")
+@example("P10Y\n")
+@example("P01Y")
+@example("0999")
 @given(
-    st.one_of(st.integers(1000, 9998).map(str), st.just("open"), st.text(max_size=6))
+    st.one_of(st.integers(1000, 9999).map(str), st.just("open"), st.text(max_size=6))
 )
 def test_property_shard_contract_and_function_agree(text: str) -> None:
     try:
@@ -170,6 +196,12 @@ def test_property_shard_contract_and_function_agree(text: str) -> None:
         contract_ok = False
     else:
         contract_ok = True
+    if text == LAST_SHARD:
+        # The one well-formed name deletable_from cannot answer for.
+        assert contract_ok
+        with pytest.raises(ValueError, match="out of range"):
+            deletable_from(text)
+        return
     try:
         deletable_from(text)
     except ValueError:
